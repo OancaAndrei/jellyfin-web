@@ -3,6 +3,7 @@ import dialogHelper from 'dialogHelper';
 import loading from 'loading';
 import layoutManager from 'layoutManager';
 import playbackManager from 'playbackManager';
+import syncPlayManager from 'syncPlayManager';
 import * as userSettings from 'userSettings';
 import appRouter from 'appRouter';
 import globalize from 'globalize';
@@ -116,7 +117,7 @@ import 'emby-button';
         apiClient.getItems(apiClient.getCurrentUserId(), options).then(result => {
             let html = '';
 
-            if (editorOptions.enableAddToPlayQueue !== false && playbackManager.isPlaying()) {
+            if ((editorOptions.enableAddToPlayQueue !== false && playbackManager.isPlaying()) || syncPlayManager.isSyncPlayEnabled()) {
                 html += `<option value="queue">${globalize.translate('AddToPlayQueue')}</option>`;
             }
 

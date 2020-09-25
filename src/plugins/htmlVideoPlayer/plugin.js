@@ -877,8 +877,8 @@ function tryRemoveElement(elem) {
             events.trigger(this, 'pause');
         };
 
-        onWaiting() {
-            events.trigger(this, 'waiting');
+        onWaiting(event) {
+            events.trigger(this, 'waiting', [event]);
         }
 
         /**

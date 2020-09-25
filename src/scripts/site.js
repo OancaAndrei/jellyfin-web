@@ -630,7 +630,11 @@ function initClient() {
         define('playbackManager', [componentsPath + '/playback/playbackmanager'], getPlaybackManager);
         define('timeSyncManager', [componentsPath + '/syncPlay/timeSyncManager'], returnDefault);
         define('groupSelectionMenu', [componentsPath + '/syncPlay/groupSelectionMenu'], returnFirstDependency);
+        define('syncPlayHelper', [componentsPath + '/syncPlay/syncPlayHelper'], returnFirstDependency);
         define('syncPlayManager', [componentsPath + '/syncPlay/syncPlayManager'], returnDefault);
+        define('syncPlayPlaybackCore', [componentsPath + '/syncPlay/syncPlayPlaybackCore'], returnFirstDependency);
+        define('syncPlayQueueCore', [componentsPath + '/syncPlay/syncPlayQueueCore'], returnFirstDependency);
+        define('syncPlayQueueManager', [componentsPath + '/syncPlay/syncPlayQueueManager'], returnFirstDependency);
         define('playbackPermissionManager', [componentsPath + '/syncPlay/playbackPermissionManager'], returnDefault);
         define('layoutManager', [componentsPath + '/layoutManager', 'apphost'], getLayoutManager);
         define('homeSections', [componentsPath + '/homesections/homesections'], returnFirstDependency);

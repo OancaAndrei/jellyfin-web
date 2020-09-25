@@ -280,8 +280,8 @@ class HtmlAudioPlayer {
             events.trigger(self, 'pause');
         }
 
-        function onWaiting() {
-            events.trigger(self, 'waiting');
+        function onWaiting(event) {
+            events.trigger(self, 'waiting', [event]);
         }
 
         function onError() {

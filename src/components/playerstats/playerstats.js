@@ -345,12 +345,12 @@ import 'css!./playerstats';
 
         syncStats.push({
             label: globalize.translate('LabelSyncPlayTimeOffset'),
-            value: stats.TimeOffset + globalize.translate('MillisecondsUnit')
+            value: stats.TimeOffset + ' ' + globalize.translate('MillisecondsUnit')
         });
 
         syncStats.push({
             label: globalize.translate('LabelSyncPlayPlaybackDiff'),
-            value: stats.PlaybackDiff + globalize.translate('MillisecondsUnit')
+            value: stats.PlaybackDiff + ' ' + globalize.translate('MillisecondsUnit')
         });
 
         syncStats.push({
