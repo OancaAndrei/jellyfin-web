@@ -9,6 +9,7 @@ import timeSyncManager from 'timeSyncManager';
 import * as syncPlayHelper from 'syncPlayHelper';
 import SyncPlayPlaybackCore from 'syncPlayPlaybackCore';
 import SyncPlayQueueCore from 'syncPlayQueueCore';
+import SyncPlayWebRTCCore from 'syncPlayWebRTCCore';
 import toast from 'toast';
 import globalize from 'globalize';
 
@@ -19,6 +20,7 @@ class SyncPlayManager {
     constructor() {
         this.playbackCore = new SyncPlayPlaybackCore(this);
         this.queueCore = new SyncPlayQueueCore(this);
+        this.webRTCCore = new SyncPlayWebRTCCore(this);
 
         this.syncMethod = 'None'; // used for stats
 
@@ -107,6 +109,9 @@ class SyncPlayManager {
                 toast({
                     text: globalize.translate('MessageSyncPlayLibraryAccessDenied')
                 });
+                break;
+            case 'WebRTC':
+                this.webRTCCore.handleMessage(apiClient, cmd.Data);
                 break;
             default:
                 console.error('processSyncPlayGroupUpdate: command is not recognised: ' + cmd.Type);
@@ -250,6 +255,8 @@ class SyncPlayManager {
 
         timeSyncManager.forceUpdate();
 
+        this.webRTCCore.enable();
+
         if (showMessage) {
             toast({
                 text: globalize.translate('MessageSyncPlayEnabled')
@@ -269,6 +276,8 @@ class SyncPlayManager {
         this.playbackCore.syncEnabled = false;
         events.trigger(this, 'enabled', [false]);
         this.restorePlaybackManager();
+
+        this.webRTCCore.disable();
 
         if (showMessage) {
             toast({

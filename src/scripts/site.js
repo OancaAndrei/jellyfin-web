@@ -634,6 +634,8 @@ function initClient() {
         define('syncPlayManager', [componentsPath + '/syncPlay/syncPlayManager'], returnDefault);
         define('syncPlayPlaybackCore', [componentsPath + '/syncPlay/syncPlayPlaybackCore'], returnFirstDependency);
         define('syncPlayQueueCore', [componentsPath + '/syncPlay/syncPlayQueueCore'], returnFirstDependency);
+        define('syncPlayWebRTCCore', [componentsPath + '/syncPlay/webRTC/syncPlayWebRTCCore'], returnFirstDependency);
+        define('syncPlayWebRTCConnection', [componentsPath + '/syncPlay/webRTC/syncPlayWebRTCConnection'], returnFirstDependency);
         define('syncPlayQueueManager', [componentsPath + '/syncPlay/syncPlayQueueManager'], returnFirstDependency);
         define('playbackPermissionManager', [componentsPath + '/syncPlay/playbackPermissionManager'], returnDefault);
         define('layoutManager', [componentsPath + '/layoutManager', 'apphost'], getLayoutManager);

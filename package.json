@@ -202,6 +202,8 @@
           "src/components/syncPlay/syncPlayManager.js",
           "src/components/syncPlay/syncPlayPlaybackCore.js",
           "src/components/syncPlay/syncPlayQueueCore.js",
+          "src/components/syncPlay/webRTC/syncPlayWebRTCCore.js",
+          "src/components/syncPlay/webRTC/syncPlayWebRTCConnection.js",
           "src/components/syncPlay/syncPlayQueueManager.js",
           "src/components/syncPlay/timeSyncManager.js",
           "src/components/themeMediaPlayer.js",
