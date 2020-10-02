@@ -57,6 +57,22 @@ class SyncPlayManager {
         events.on(this, 'playbackstop', (event, stopInfo) => {
             this.queuedCommand = null;
         });
+
+        events.on(this.webRTCCore, 'peer-helo', (event, peerId) => {
+            this.webRTCCore.sendMessage(peerId, {
+                message: 'helo',
+                timeOffsetWithServer: timeSyncManager.getTimeOffset(),
+                ping: timeSyncManager.getPing()
+            });
+        });
+
+        events.on(this.webRTCCore, 'peer-message', (event, peerId, message) => {
+
+        });
+
+        events.on(this.webRTCCore, 'peer-bye', (event, peerId) => {
+
+        });
     }
 
     /**
@@ -111,7 +127,7 @@ class SyncPlayManager {
                 });
                 break;
             case 'WebRTC':
-                this.webRTCCore.handleMessage(apiClient, cmd.Data);
+                this.webRTCCore.handleSignalingMessage(apiClient, cmd.Data);
                 break;
             default:
                 console.error('processSyncPlayGroupUpdate: command is not recognised: ' + cmd.Type);

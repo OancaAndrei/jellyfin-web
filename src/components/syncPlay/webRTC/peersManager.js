@@ -1,15 +1,13 @@
 /**
  * Module that manages WebRTC connections for SyncPlay.
- * @module components/syncPlay/webRTC/syncPlayWebRTCCore
+ * @module components/syncPlay/webRTC/peersManager
  */
 
-import SyncPlayWebRTCConnection from 'syncPlayWebRTCConnection';
+import SyncPlayWebRTCPeer from 'syncPlayWebRTCPeer';
 
-var syncPlayManager;
-
-class SyncPlayWebRTCCore {
-    constructor(_syncPlayManager) {
-        syncPlayManager = _syncPlayManager;
+class SyncPlayWebRTCPeersManager {
+    constructor(webRTCCore) {
+        this.webRTCCore = webRTCCore;
         this.peers = {};
         this.enabled = false;
     }
@@ -52,7 +50,7 @@ class SyncPlayWebRTCCore {
     }
 
     async addConnection(userId, isHost = false) {
-        const connection = new SyncPlayWebRTCConnection(userId, isHost);
+        const connection = new SyncPlayWebRTCPeer(this.webRTCCore, userId, isHost);
         this.peers[userId] = connection;
         await connection.open();
     }
@@ -64,30 +62,38 @@ class SyncPlayWebRTCCore {
     }
 
     /**
-     * Handles a message received from the server.
+     * Handles a signaling message received from the server.
      * @param {Object} apiClient The ApiClient.
      * @param {Object} message The new message.
      */
-    async handleMessage(apiClient, message) {
-        console.log(this, message);
-
+    async handleSignalingMessage(apiClient, message) {
         const from = message.From;
         if (message.NewSession) {
-            console.debug('SyncPlay WebRTC handleMessage: new session.');
+            console.debug(`SyncPlay WebRTC handleSignalingMessage: new session: ${from}.`);
             await this.addConnection(from, true);
         } else if (message.SessionLeaving) {
-            console.debug('SyncPlay WebRTC handleMessage: session leaving.');
+            console.debug(`SyncPlay WebRTC handleSignalingMessage: session leaving: ${from}.`);
             this.removeConnection(from);
         } else {
             let connection = this.getConnectionByUserId(from);
             if (!connection) {
-                console.debug('SyncPlay WebRTC handleMessage: new connection received.');
+                console.debug(`SyncPlay WebRTC handleSignalingMessage: new connection received: ${from}.`);
                 await this.addConnection(from);
             }
             connection = this.getConnectionByUserId(from);
-            connection.handleMessage(apiClient, message);
+            connection.onSignalingMessage(apiClient, message);
         }
+    }
+
+    sendMessage(peerId, message) {
+        let connection = this.getConnectionByUserId(peerId);
+        if (!connection) {
+            console.error(`SyncPlay WebRTC sendMessage: no connection found for peer ${peerId}.`);
+            return;
+        }
+
+        connection.sendMessage(message);
     }
 }
 
-export default SyncPlayWebRTCCore;
+export default SyncPlayWebRTCPeersManager;

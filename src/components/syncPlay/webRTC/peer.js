@@ -1,13 +1,16 @@
 /**
  * Module that manages a single WebRTC connection for SyncPlay.
- * @module components/syncPlay/webRTC/syncPlayWebRTCConnection
+ * @module components/syncPlay/webRTC/peer
  */
 
-class SyncPlayWebRTCConnection {
-    constructor(sessionId, isHost = false) {
+import events from 'events';
+
+class SyncPlayWebRTCPeer {
+    constructor(webRTCCore, sessionId, isHost = false) {
+        this.webRTCCore = webRTCCore;
         this.sessionId = sessionId;
-        this.peerConnection = null;
         this.isHost = isHost;
+        this.peerConnection = null;
         this.iceCandidates = [];
     }
 
@@ -19,14 +22,6 @@ class SyncPlayWebRTCConnection {
     }
 
     close() {
-        // TODO: notify peer?
-        if (!this.dataChannel) {
-            return;
-        }
-
-        this.dataChannel.send({
-            message: 'bye'
-        });
     }
 
     initPeerConnection() {
@@ -37,11 +32,11 @@ class SyncPlayWebRTCConnection {
         };
         this.peerConnection = new RTCPeerConnection(configuration);
         if (this.isHost) {
-            // Important to create the channel before sending offers as ICE will fail otherwise
+            console.debug(`SyncPlay WebRTC initPeerConnection: peer ${this.sessionId} is our guest, creating data channel.`);
             const channel = this.peerConnection.createDataChannel('channel');
             this.setDataChannel(channel);
         } else {
-            console.debug('SyncPlay WebRTC initPeerConnection: guest peer, no data channel created yet.');
+            console.debug(`SyncPlay WebRTC initPeerConnection: peer ${this.sessionId} is our host, waiting for data channel.`);
         }
 
         this.peerConnection.addEventListener('icecandidate', (event) => {
@@ -55,14 +50,14 @@ class SyncPlayWebRTCConnection {
 
         this.peerConnection.addEventListener('connectionstatechange', (event) => {
             if (this.peerConnection.connectionState === 'connected') {
-                console.log('SyncPlay WebRTC: peers connected!');
+                console.log(`SyncPlay WebRTC: connected with peer ${this.sessionId}!`);
             } else {
-                console.log('SyncPlay WebRTC: connection state changed:', this.peerConnection.connectionState);
+                console.debug(`SyncPlay WebRTC: connection state changed with peer ${this.sessionId}:`, this.peerConnection.connectionState);
             }
         });
 
         this.peerConnection.addEventListener('datachannel', (event) => {
-            console.debug('SyncPlay WebRTC initPeerConnection: new data channel received.');
+            console.debug(`SyncPlay WebRTC initPeerConnection: new data channel received from peer ${this.sessionId}.`);
             this.setDataChannel(event.channel);
         });
     }
@@ -71,26 +66,27 @@ class SyncPlayWebRTCConnection {
         this.dataChannel = channel;
 
         this.dataChannel.addEventListener('open', (event) => {
-            console.log('SyncPlay WebRTC: data channel is open!', event);
-            this.dataChannel.send(JSON.stringify({
-                message: 'helo'
-            }));
+            console.log(`SyncPlay WebRTC: data channel is open with peer ${this.sessionId}!`, event);
+            events.trigger(this.webRTCCore, 'peer-helo', [this.sessionId]);
         });
 
         this.dataChannel.addEventListener('message', (event) => {
-            console.log('SyncPlay WebRTC: message received:', event);
-            if (event.data) {
+            if (event.data && typeof event.data === 'string') {
                 try {
-                const message = JSON.parse(event.data);
-                console.log('SyncPlay WebRTC: message data:', message);
+                    const message = JSON.parse(event.data);
+                    console.debug(`SyncPlay WebRTC: peer ${this.sessionId} sent a message:`, message);
+                    events.trigger(this.webRTCCore, 'peer-message', [this.sessionId, message]);
                 } catch (error) {
-                    console.log('SyncPlay WebRTC: error parsing JSON:', error, event.data);
+                    console.error(`SyncPlay WebRTC: error while loading message from peer ${this.sessionId}:`, error, event.data);
                 }
+            } else if (event.data) {
+                console.warn(`SyncPlay WebRTC: unknown message from peer ${this.sessionId}:`, event.data);
             }
         });
 
         this.dataChannel.addEventListener('close', (event) => {
-            console.log('SyncPlay WebRTC: data channel has closed.', event);
+            console.debug(`SyncPlay WebRTC: data channel for peer ${this.sessionId} has been closed.`, event);
+            events.trigger(this.webRTCCore, 'peer-bye', [this.sessionId]);
         });
     }
 
@@ -132,30 +128,45 @@ class SyncPlayWebRTCConnection {
     }
 
     /**
-     * Handles a message received from the server.
+     * Handles a signaling message received from the server.
      * @param {Object} apiClient The ApiClient.
      * @param {Object} message The new message.
      */
-    async handleMessage(apiClient, message) {
+    async onSignalingMessage(apiClient, message) {
         if (message.Answer) {
             const answer = JSON.parse(message.Answer);
+            console.debug(`SyncPlay WebRTC onSignalingMessage: received answer from peer ${this.sessionId}.`, answer);
+
             const remoteDesc = new RTCSessionDescription(answer);
             await this.peerConnection.setRemoteDescription(remoteDesc);
         } else if (message.Offer) {
             const offer = JSON.parse(message.Offer);
+            console.debug(`SyncPlay WebRTC onSignalingMessage: received offer from peer ${this.sessionId}.`, offer);
+
             const remoteDesc = new RTCSessionDescription(offer);
             await this.peerConnection.setRemoteDescription(remoteDesc);
             await this.setICECandidatesQueue();
             await this.sendAnswer();
         } else if (message.ICECandidate) {
             const iceCandidate = JSON.parse(message.ICECandidate);
+            console.debug(`SyncPlay WebRTC onSignalingMessage: received ICECandidate from peer ${this.sessionId}.`, iceCandidate);
+
             try {
                 await this.onRemoteICECandidate(iceCandidate);
             } catch (error) {
-                console.error('SyncPlay WebRTC handleMessage: error adding received ICE candidate.', error);
+                console.error(`SyncPlay WebRTC onSignalingMessage: error adding ICECandidate from peer ${this.sessionId}.`, error);
             }
+        }
+    }
+
+    sendMessage(message) {
+        if (this.dataChannel) {
+            this.dataChannel.send(JSON.stringify(message));
+        } else {
+            console.error(`SyncPlay WebRTC sendMessage: peer ${this.sessionId} has no data channel open!`);
+            // TODO: queue message?
         }
     }
 }
 
-export default SyncPlayWebRTCConnection;
+export default SyncPlayWebRTCPeer;
