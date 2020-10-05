@@ -5,7 +5,7 @@
 
 import events from 'events';
 import playbackManager from 'playbackManager';
-import timeSyncManager from 'timeSyncManager';
+import timeSyncServer from 'timeSyncServer';
 import * as syncPlayHelper from 'syncPlayHelper';
 import SyncPlayPlaybackCore from 'syncPlayPlaybackCore';
 import SyncPlayQueueCore from 'syncPlayQueueCore';
@@ -33,7 +33,7 @@ class SyncPlayManager {
 
         this.notifySyncPlayReady = false;
 
-        events.on(timeSyncManager, 'update', (event, error, timeOffset, ping) => {
+        events.on(timeSyncServer, 'update', (event, error, timeOffset, ping) => {
             if (error) {
                 console.debug('SyncPlay, time update issue', error);
                 return;
@@ -52,6 +52,15 @@ class SyncPlayManager {
                     Ping: ping
                 });
             }
+
+            // Notify peers
+            this.webRTCCore.broadcastMessage({
+                type: 'time-sync-server-update',
+                data: {
+                    timeOffset: timeOffset,
+                    ping: ping
+                }
+            });
         });
 
         events.on(this, 'playbackstop', (event, stopInfo) => {
@@ -59,14 +68,10 @@ class SyncPlayManager {
         });
 
         events.on(this.webRTCCore, 'peer-helo', (event, peerId) => {
-            this.webRTCCore.sendMessage(peerId, {
-                message: 'helo',
-                timeOffsetWithServer: timeSyncManager.getTimeOffset(),
-                ping: timeSyncManager.getPing()
-            });
+
         });
 
-        events.on(this.webRTCCore, 'peer-message', (event, peerId, message) => {
+        events.on(this.webRTCCore, 'peer-message', (event, peerId, message, receivedAt) => {
 
         });
 
@@ -269,7 +274,7 @@ class SyncPlayManager {
         this.notifySyncPlayReady = true;
         this.followingGroupPlayback = true;
 
-        timeSyncManager.forceUpdate();
+        timeSyncServer.forceUpdate();
 
         this.webRTCCore.enable();
 

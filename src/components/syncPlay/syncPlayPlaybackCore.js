@@ -5,7 +5,7 @@
 
 import events from 'events';
 import playbackManager from 'playbackManager';
-import timeSyncManager from 'timeSyncManager';
+import timeSyncServer from 'timeSyncServer';
 import * as syncPlayHelper from 'syncPlayHelper';
 
 /**
@@ -50,7 +50,6 @@ class SyncPlayPlaybackCore {
         this.syncTimeout = null;
 
         this.timeOffsetWithServer = 0; // server time minus local time
-        this.roundTripDuration = 0;
 
         events.on(playbackManager, 'playbackstart', (player, state) => {
             this.onPlaybackStart(player, state);
@@ -64,13 +63,12 @@ class SyncPlayPlaybackCore {
             this.onPlayerChange();
         });
 
-        events.on(timeSyncManager, 'update', (event, error, timeOffset, ping) => {
+        events.on(timeSyncServer, 'update', (event, error, timeOffset, ping) => {
             if (error) {
                 return;
             }
 
             this.timeOffsetWithServer = timeOffset;
-            this.roundTripDuration = ping * 2;
         });
 
         this.bindToPlayer(playbackManager.getCurrentPlayer());
@@ -236,7 +234,7 @@ class SyncPlayPlaybackCore {
      */
     sendBufferingRequest(isBuffering = true) {
         const currentTime = new Date();
-        const now = timeSyncManager.localDateToServer(currentTime);
+        const now = timeSyncServer.localDateToRemote(currentTime);
         const currentPositionTicks = playbackManager.currentTime() * syncPlayHelper.TicksPerMillisecond;
         const state = playbackManager.getPlayerState();
         const playlistItemId = syncPlayManager.queueCore.getCurrentPlaylistItemId();
@@ -277,7 +275,7 @@ class SyncPlayPlaybackCore {
 
             // Determine if past command or future one
             const currentTime = new Date();
-            const whenLocal = timeSyncManager.serverDateToLocal(command.When);
+            const whenLocal = timeSyncServer.remoteDateToLocal(command.When);
             if (whenLocal > currentTime) {
                 // Command should be scheduled, not much we can do
                 // TODO: should re-apply or just drop?
@@ -359,7 +357,7 @@ class SyncPlayPlaybackCore {
     scheduleUnpause(playAtTime, positionTicks) {
         this.clearScheduledCommand();
         const currentTime = new Date();
-        const playAtTimeLocal = timeSyncManager.serverDateToLocal(playAtTime);
+        const playAtTimeLocal = timeSyncServer.remoteDateToLocal(playAtTime);
 
         if (playAtTimeLocal > currentTime) {
             const playTimeout = playAtTimeLocal - currentTime;
@@ -407,7 +405,7 @@ class SyncPlayPlaybackCore {
     schedulePause(pauseAtTime, positionTicks) {
         this.clearScheduledCommand();
         const currentTime = new Date();
-        const pauseAtTimeLocal = timeSyncManager.serverDateToLocal(pauseAtTime);
+        const pauseAtTimeLocal = timeSyncServer.remoteDateToLocal(pauseAtTime);
 
         const callback = () => {
             syncPlayHelper.waitForEventOnce(syncPlayManager, 'pause', syncPlayHelper.WaitForPlayerEventTimeout).then(() => {
@@ -437,7 +435,7 @@ class SyncPlayPlaybackCore {
     scheduleStop(stopAtTime) {
         this.clearScheduledCommand();
         const currentTime = new Date();
-        const stopAtTimeLocal = timeSyncManager.serverDateToLocal(stopAtTime);
+        const stopAtTimeLocal = timeSyncServer.remoteDateToLocal(stopAtTime);
 
         const callback = () => {
             this.localStop();
@@ -462,7 +460,7 @@ class SyncPlayPlaybackCore {
     scheduleSeek(seekAtTime, positionTicks) {
         this.clearScheduledCommand();
         const currentTime = new Date();
-        const seekAtTimeLocal = timeSyncManager.serverDateToLocal(seekAtTime);
+        const seekAtTimeLocal = timeSyncServer.remoteDateToLocal(seekAtTime);
 
         const callback = () => {
             this.localUnpause();

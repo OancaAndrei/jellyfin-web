@@ -628,7 +628,9 @@ function initClient() {
         define('homescreenSettings', [componentsPath + '/homeScreenSettings/homeScreenSettings'], returnFirstDependency);
         define('quickConnectSettings', [componentsPath + '/quickConnectSettings/quickConnectSettings'], returnFirstDependency);
         define('playbackManager', [componentsPath + '/playback/playbackmanager'], getPlaybackManager);
-        define('timeSyncManager', [componentsPath + '/syncPlay/timeSyncManager'], returnDefault);
+        define('timeSync', [componentsPath + '/syncPlay/timeSync/timeSync'], returnDefault);
+        define('timeSyncServer', [componentsPath + '/syncPlay/timeSync/server'], returnDefault);
+        define('timeSyncPeer', [componentsPath + '/syncPlay/timeSync/peer'], returnFirstDependency);
         define('groupSelectionMenu', [componentsPath + '/syncPlay/groupSelectionMenu'], returnFirstDependency);
         define('syncPlayHelper', [componentsPath + '/syncPlay/syncPlayHelper'], returnFirstDependency);
         define('syncPlayManager', [componentsPath + '/syncPlay/syncPlayManager'], returnDefault);

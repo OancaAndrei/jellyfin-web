@@ -71,11 +71,12 @@ class SyncPlayWebRTCPeer {
         });
 
         this.dataChannel.addEventListener('message', (event) => {
+            const messageReceivedAt = new Date();
             if (event.data && typeof event.data === 'string') {
                 try {
                     const message = JSON.parse(event.data);
                     console.debug(`SyncPlay WebRTC: peer ${this.sessionId} sent a message:`, message);
-                    events.trigger(this.webRTCCore, 'peer-message', [this.sessionId, message]);
+                    events.trigger(this.webRTCCore, 'peer-message', [this.sessionId, message, messageReceivedAt]);
                 } catch (error) {
                     console.error(`SyncPlay WebRTC: error while loading message from peer ${this.sessionId}:`, error, event.data);
                 }
