@@ -7,7 +7,6 @@
 
 import events from 'events';
 import playbackManager from 'playbackManager';
-import timeSyncServer from 'timeSyncServer';
 import * as syncPlayHelper from 'syncPlayHelper';
 import SyncPlayQueueManager from 'syncPlayQueueManager';
 import toast from 'toast';
@@ -112,7 +111,7 @@ class SyncPlayQueueCore {
             syncPlayManager.playbackCore.localPause();
 
             const currentTime = new Date();
-            const now = timeSyncServer.localDateToRemote(currentTime);
+            const now = syncPlayManager.timeSyncCore.localDateToRemote(currentTime);
             const currentPositionTicks = playbackManager.currentTime() * syncPlayHelper.TicksPerMillisecond;
             const state = playbackManager.getPlayerState();
 

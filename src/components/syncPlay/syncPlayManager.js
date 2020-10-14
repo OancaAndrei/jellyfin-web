@@ -5,11 +5,12 @@
 
 import events from 'events';
 import playbackManager from 'playbackManager';
-import timeSyncServer from 'timeSyncServer';
 import * as syncPlayHelper from 'syncPlayHelper';
+import syncPlaySettings from 'syncPlaySettings';
+import TimeSyncCore from 'timeSyncCore';
+import SyncPlayWebRTCCore from 'syncPlayWebRTCCore';
 import SyncPlayPlaybackCore from 'syncPlayPlaybackCore';
 import SyncPlayQueueCore from 'syncPlayQueueCore';
-import SyncPlayWebRTCCore from 'syncPlayWebRTCCore';
 import toast from 'toast';
 import globalize from 'globalize';
 
@@ -18,9 +19,10 @@ import globalize from 'globalize';
  */
 class SyncPlayManager {
     constructor() {
+        this.webRTCCore = new SyncPlayWebRTCCore(this);
+        this.timeSyncCore = new TimeSyncCore(this.webRTCCore);
         this.playbackCore = new SyncPlayPlaybackCore(this);
         this.queueCore = new SyncPlayQueueCore(this);
-        this.webRTCCore = new SyncPlayWebRTCCore(this);
 
         this.syncMethod = 'None'; // used for stats
 
@@ -33,12 +35,7 @@ class SyncPlayManager {
 
         this.notifySyncPlayReady = false;
 
-        events.on(timeSyncServer, 'update', (event, error, timeOffset, ping) => {
-            if (error) {
-                console.debug('SyncPlay, time update issue', error);
-                return;
-            }
-
+        events.on(this.timeSyncCore, 'time-sync-server-update', (event, timeOffset, ping) => {
             if (this.notifySyncPlayReady) {
                 this.syncPlayReady = true;
                 events.trigger(this, 'ready');
@@ -52,15 +49,6 @@ class SyncPlayManager {
                     Ping: ping
                 });
             }
-
-            // Notify peers
-            this.webRTCCore.broadcastMessage({
-                type: 'time-sync-server-update',
-                data: {
-                    timeOffset: timeOffset,
-                    ping: ping
-                }
-            });
         });
 
         events.on(this, 'playbackstop', (event, stopInfo) => {
@@ -274,9 +262,12 @@ class SyncPlayManager {
         this.notifySyncPlayReady = true;
         this.followingGroupPlayback = true;
 
-        timeSyncServer.forceUpdate();
+        this.timeSyncCore.forceUpdate();
 
-        this.webRTCCore.enable();
+        const enableWebRTC = syncPlaySettings.getBool('enableWebRTC');
+        if (enableWebRTC) {
+            this.webRTCCore.enable();
+        }
 
         if (showMessage) {
             toast({
@@ -356,7 +347,7 @@ class SyncPlayManager {
      */
     getStats() {
         return {
-            TimeOffset: this.playbackCore.timeOffsetWithServer.toFixed(2),
+            TimeOffset: this.timeSyncCore.getTimeOffset().toFixed(2),
             PlaybackDiff: this.playbackCore.playbackDiffMillis.toFixed(2),
             SyncMethod: this.syncMethod
         };

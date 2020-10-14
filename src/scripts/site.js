@@ -631,13 +631,15 @@ function initClient() {
         define('timeSync', [componentsPath + '/syncPlay/timeSync/timeSync'], returnDefault);
         define('timeSyncServer', [componentsPath + '/syncPlay/timeSync/server'], returnDefault);
         define('timeSyncPeer', [componentsPath + '/syncPlay/timeSync/peer'], returnFirstDependency);
+        define('timeSyncCore', [componentsPath + '/syncPlay/timeSync/core'], returnDefault);
+        define('syncPlaySettings', [componentsPath + '/syncPlay/settings/settings'], returnFirstDependency);
+        define('syncPlaySettingsEditor', [componentsPath + '/syncPlay/settings/editor'], returnFirstDependency);
         define('groupSelectionMenu', [componentsPath + '/syncPlay/groupSelectionMenu'], returnFirstDependency);
         define('syncPlayHelper', [componentsPath + '/syncPlay/syncPlayHelper'], returnFirstDependency);
         define('syncPlayManager', [componentsPath + '/syncPlay/syncPlayManager'], returnDefault);
         define('syncPlayPlaybackCore', [componentsPath + '/syncPlay/syncPlayPlaybackCore'], returnFirstDependency);
         define('syncPlayQueueCore', [componentsPath + '/syncPlay/syncPlayQueueCore'], returnFirstDependency);
         define('syncPlayWebRTCCore', [componentsPath + '/syncPlay/webRTC/core'], returnFirstDependency);
-        define('syncPlayWebRTCPeersManager', [componentsPath + '/syncPlay/webRTC/peersManager'], returnFirstDependency);
         define('syncPlayWebRTCPeer', [componentsPath + '/syncPlay/webRTC/peer'], returnFirstDependency);
         define('syncPlayQueueManager', [componentsPath + '/syncPlay/syncPlayQueueManager'], returnFirstDependency);
         define('playbackPermissionManager', [componentsPath + '/syncPlay/playbackPermissionManager'], returnDefault);

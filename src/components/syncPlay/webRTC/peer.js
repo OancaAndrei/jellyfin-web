@@ -3,8 +3,9 @@
  * @module components/syncPlay/webRTC/peer
  */
 
-import events from 'events';
-
+ /**
+ * Class that manages a single WebRTC connection.
+ */
 class SyncPlayWebRTCPeer {
     constructor(webRTCCore, sessionId, isHost = false) {
         this.webRTCCore = webRTCCore;
@@ -14,6 +15,9 @@ class SyncPlayWebRTCPeer {
         this.iceCandidates = [];
     }
 
+    /**
+     * Creates a new connection with the peer. Sends offers if this peer is the host.
+     */
     async open() {
         this.initPeerConnection();
         if (this.isHost) {
@@ -21,10 +25,22 @@ class SyncPlayWebRTCPeer {
         }
     }
 
+    /**
+     * Closes the active connection.
+     */
     close() {
+        if (this.peerConnection) {
+            this.peerConnection.close();
+            this.peerConnection = null;
+        }
     }
 
+    /**
+     * Initializes a new WebRTC connection with the peer. Previous connection gets closed if active.
+     */
     initPeerConnection() {
+        this.close();
+
         const apiClient = window.connectionManager.currentApiClient();
 
         const configuration = {
@@ -62,12 +78,16 @@ class SyncPlayWebRTCPeer {
         });
     }
 
+    /**
+     * Sets the given data channel as the active one.
+     * @param {RTCDataChannel} channel The data channel.
+     */
     setDataChannel(channel) {
         this.dataChannel = channel;
 
         this.dataChannel.addEventListener('open', (event) => {
             console.log(`SyncPlay WebRTC: data channel is open with peer ${this.sessionId}!`, event);
-            events.trigger(this.webRTCCore, 'peer-helo', [this.sessionId]);
+            this.webRTCCore.onPeerConnected(this.sessionId);
         });
 
         this.dataChannel.addEventListener('message', (event) => {
@@ -76,7 +96,7 @@ class SyncPlayWebRTCPeer {
                 try {
                     const message = JSON.parse(event.data);
                     console.debug(`SyncPlay WebRTC: peer ${this.sessionId} sent a message:`, message);
-                    events.trigger(this.webRTCCore, 'peer-message', [this.sessionId, message, messageReceivedAt]);
+                    this.webRTCCore.onPeerMessage(this.sessionId, message, messageReceivedAt);
                 } catch (error) {
                     console.error(`SyncPlay WebRTC: error while loading message from peer ${this.sessionId}:`, error, event.data);
                 }
@@ -87,10 +107,13 @@ class SyncPlayWebRTCPeer {
 
         this.dataChannel.addEventListener('close', (event) => {
             console.debug(`SyncPlay WebRTC: data channel for peer ${this.sessionId} has been closed.`, event);
-            events.trigger(this.webRTCCore, 'peer-bye', [this.sessionId]);
+            this.webRTCCore.onPeerDisconnected(this.sessionId);
         });
     }
 
+    /**
+     * Sends an SDP offer to the peer. The server is employed for the signaling process.
+     */
     async sendOffer() {
         const offer = await this.peerConnection.createOffer();
         await this.peerConnection.setLocalDescription(offer);
@@ -102,6 +125,9 @@ class SyncPlayWebRTCPeer {
         });
     }
 
+    /**
+     * Sends an SDP answer to the peer. The server is employed for the signaling process.
+     */
     async sendAnswer() {
         const answer = await this.peerConnection.createAnswer();
         await this.peerConnection.setLocalDescription(answer);
@@ -113,6 +139,10 @@ class SyncPlayWebRTCPeer {
         });
     }
 
+    /**
+     * Handles a new ICE candidate.
+     * @param {RTCIceCandidate} iceCandidate The ICE candidate.
+     */
     async onRemoteICECandidate(iceCandidate) {
         if (!this.peerConnection || !this.peerConnection.remoteDescription || !this.peerConnection.remoteDescription.type) {
             this.iceCandidates.push(iceCandidate);
@@ -121,6 +151,9 @@ class SyncPlayWebRTCPeer {
         }
     }
 
+    /**
+     * Handles queued ICE candidates.
+     */
     async setICECandidatesQueue() {
         for (const iceCandidate of this.iceCandidates) {
             await this.peerConnection.addIceCandidate(iceCandidate);
@@ -160,12 +193,16 @@ class SyncPlayWebRTCPeer {
         }
     }
 
+    /**
+     * Sends a message to the peer using the WebRTC data channel, if available.
+     * @param {Object} message The message.
+     */
     sendMessage(message) {
         if (this.dataChannel) {
             this.dataChannel.send(JSON.stringify(message));
         } else {
             console.error(`SyncPlay WebRTC sendMessage: peer ${this.sessionId} has no data channel open!`);
-            // TODO: queue message?
+            // TODO: queue message or throw exception?
         }
     }
 }

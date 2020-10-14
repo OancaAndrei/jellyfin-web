@@ -36,5 +36,4 @@ class TimeSyncServer extends TimeSync {
     }
 }
 
-/** TimeSyncServer singleton. */
-export default new TimeSyncServer();
+export default TimeSyncServer;

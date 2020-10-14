@@ -115,19 +115,26 @@ class TimeSync {
         return Promise.reject('Not implemented.');
     }
 
+    /**
+     * Poller for ping requests.
+     */
     internalRequestPing() {
-        if (!this.poller) {
+        if (!this.poller && !this.pingStop) {
             this.poller = setTimeout(() => {
                 this.poller = null;
                 this.requestPing()
-                    .then((result) => this.onPingResponse(result))
-                    .catch((error) => this.onPingRequestError(error))
+                    .then((result) => this.onPingResponseCallback(result))
+                    .catch((error) => this.onPingRequestErrorCallback(error))
                     .finally(() => this.internalRequestPing());
             }, this.pollingInterval);
         }
     }
 
-    onPingResponse(result) {
+    /**
+     * Handles a successful ping request.
+     * @param {Object} result The ping result.
+     */
+    onPingResponseCallback(result) {
         const { requestSent, requestReceived, responseSent, responseReceived } = result;
         const measurement = new Measurement(requestSent, requestReceived, responseSent, responseReceived);
         this.updateTimeOffset(measurement);
@@ -142,7 +149,11 @@ class TimeSync {
         events.trigger(this, 'update', [null, this.getTimeOffset(), this.getPing()]);
     }
 
-    onPingRequestError(error) {
+    /**
+     * Handles a failed ping request.
+     * @param {Object} error The error.
+     */
+    onPingRequestErrorCallback(error) {
         console.error(error);
         events.trigger(this, 'update', [error, null, null]);
     }
@@ -159,6 +170,7 @@ class TimeSync {
      * Starts the time poller.
      */
     startPing() {
+        this.pingStop = false;
         this.internalRequestPing();
     }
 
@@ -166,6 +178,7 @@ class TimeSync {
      * Stops the time poller.
      */
     stopPing() {
+        this.pingStop = true;
         if (this.poller) {
             clearTimeout(this.poller);
             this.poller = null;
@@ -195,7 +208,7 @@ class TimeSync {
     /**
      * Converts local time to remote time.
      * @param {Date} local The time to convert.
-     * @returns {Date} Local time.
+     * @returns {Date} Remote time.
      */
     localDateToRemote(local) {
         // remote - local = offset

@@ -5,8 +5,8 @@
 
 import events from 'events';
 import playbackManager from 'playbackManager';
-import timeSyncServer from 'timeSyncServer';
 import * as syncPlayHelper from 'syncPlayHelper';
+import syncPlaySettings from 'syncPlaySettings';
 
 /**
  * Playback synchronization
@@ -30,6 +30,7 @@ class SyncPlayPlaybackCore {
     constructor(_syncPlayManager) {
         // FIXME: kinda ugly but does its job (it avoids circular dependencies)
         syncPlayManager = _syncPlayManager;
+        this.timeSyncCore = syncPlayManager.timeSyncCore;
 
         this.playbackRateSupported = false;
         this.syncEnabled = false;
@@ -38,6 +39,7 @@ class SyncPlayPlaybackCore {
         this.lastSyncTime = new Date();
         this.syncWatcherTimeout = null; // interval that watches playback time and syncs it
         this.syncLevel = 1; // Multiplier for default values, 1 being the most demanding one
+        this.enableSyncCorrection = true; // user setting to disable sync during playback
 
         this.lastPlaybackWaiting = null; // used to determine if player's buffering
         this.minBufferingThresholdMillis = 1000;
@@ -48,8 +50,6 @@ class SyncPlayPlaybackCore {
         this.lastCommand = null; // Last playback command received from server
         this.scheduledCommand = null;
         this.syncTimeout = null;
-
-        this.timeOffsetWithServer = 0; // server time minus local time
 
         events.on(playbackManager, 'playbackstart', (player, state) => {
             this.onPlaybackStart(player, state);
@@ -63,15 +63,13 @@ class SyncPlayPlaybackCore {
             this.onPlayerChange();
         });
 
-        events.on(timeSyncServer, 'update', (event, error, timeOffset, ping) => {
-            if (error) {
-                return;
-            }
+        this.bindToPlayer(playbackManager.getCurrentPlayer());
 
-            this.timeOffsetWithServer = timeOffset;
+        events.on(syncPlaySettings, 'enableSyncCorrection', (event, value, oldValue) => {
+            this.enableSyncCorrection = value !== 'false';
         });
 
-        this.bindToPlayer(playbackManager.getCurrentPlayer());
+        this.enableSyncCorrection = syncPlaySettings.getBool('enableSyncCorrection');
     }
 
     /**
@@ -234,7 +232,7 @@ class SyncPlayPlaybackCore {
      */
     sendBufferingRequest(isBuffering = true) {
         const currentTime = new Date();
-        const now = timeSyncServer.localDateToRemote(currentTime);
+        const now = this.timeSyncCore.localDateToRemote(currentTime);
         const currentPositionTicks = playbackManager.currentTime() * syncPlayHelper.TicksPerMillisecond;
         const state = playbackManager.getPlayerState();
         const playlistItemId = syncPlayManager.queueCore.getCurrentPlaylistItemId();
@@ -275,7 +273,7 @@ class SyncPlayPlaybackCore {
 
             // Determine if past command or future one
             const currentTime = new Date();
-            const whenLocal = timeSyncServer.remoteDateToLocal(command.When);
+            const whenLocal = this.timeSyncCore.remoteDateToLocal(command.When);
             if (whenLocal > currentTime) {
                 // Command should be scheduled, not much we can do
                 // TODO: should re-apply or just drop?
@@ -357,7 +355,7 @@ class SyncPlayPlaybackCore {
     scheduleUnpause(playAtTime, positionTicks) {
         this.clearScheduledCommand();
         const currentTime = new Date();
-        const playAtTimeLocal = timeSyncServer.remoteDateToLocal(playAtTime);
+        const playAtTimeLocal = this.timeSyncCore.remoteDateToLocal(playAtTime);
 
         if (playAtTimeLocal > currentTime) {
             const playTimeout = playAtTimeLocal - currentTime;
@@ -405,7 +403,7 @@ class SyncPlayPlaybackCore {
     schedulePause(pauseAtTime, positionTicks) {
         this.clearScheduledCommand();
         const currentTime = new Date();
-        const pauseAtTimeLocal = timeSyncServer.remoteDateToLocal(pauseAtTime);
+        const pauseAtTimeLocal = this.timeSyncCore.remoteDateToLocal(pauseAtTime);
 
         const callback = () => {
             syncPlayHelper.waitForEventOnce(syncPlayManager, 'pause', syncPlayHelper.WaitForPlayerEventTimeout).then(() => {
@@ -435,7 +433,7 @@ class SyncPlayPlaybackCore {
     scheduleStop(stopAtTime) {
         this.clearScheduledCommand();
         const currentTime = new Date();
-        const stopAtTimeLocal = timeSyncServer.remoteDateToLocal(stopAtTime);
+        const stopAtTimeLocal = this.timeSyncCore.remoteDateToLocal(stopAtTime);
 
         const callback = () => {
             this.localStop();
@@ -460,7 +458,7 @@ class SyncPlayPlaybackCore {
     scheduleSeek(seekAtTime, positionTicks) {
         this.clearScheduledCommand();
         const currentTime = new Date();
-        const seekAtTimeLocal = timeSyncServer.remoteDateToLocal(seekAtTime);
+        const seekAtTimeLocal = this.timeSyncCore.remoteDateToLocal(seekAtTime);
 
         const callback = () => {
             this.localUnpause();
@@ -624,7 +622,8 @@ class SyncPlayPlaybackCore {
      */
     estimateCurrentTicks(ticks, when) {
         const currentTime = new Date();
-        return ticks + ((currentTime - when) + this.timeOffsetWithServer) * syncPlayHelper.TicksPerMillisecond;
+        const timeOffset = this.timeSyncCore.getTimeOffset();
+        return ticks + ((currentTime - when) + timeOffset) * syncPlayHelper.TicksPerMillisecond;
     }
 
     /**
@@ -671,14 +670,15 @@ class SyncPlayPlaybackCore {
 
         const currentPositionTicks = playbackManager.currentTime() * syncPlayHelper.TicksPerMillisecond;
         // Estimate PositionTicks on server
-        const serverPositionTicks = lastCommand.PositionTicks + ((currentTime - playAtTime) + self.timeOffsetWithServer) * syncPlayHelper.TicksPerMillisecond;
+        const timeOffset = self.timeSyncCore.getTimeOffset();
+        const serverPositionTicks = lastCommand.PositionTicks + ((currentTime - playAtTime) + timeOffset) * syncPlayHelper.TicksPerMillisecond;
         // Measure delay that needs to be recovered
         // diff might be caused by the player internally starting the playback
         const diffMillis = (serverPositionTicks - currentPositionTicks) / syncPlayHelper.TicksPerMillisecond;
 
         self.playbackDiffMillis = diffMillis;
 
-        if (self.syncEnabled) {
+        if (self.syncEnabled && self.enableSyncCorrection) {
             const absDiffMillis = Math.abs(diffMillis);
             // TODO: SpeedToSync sounds bad on songs
             // TODO: SpeedToSync is failing on Safari (Mojave); even if playbackRate is supported, some delay seems to exist

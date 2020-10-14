@@ -1,5 +1,6 @@
 import events from 'events';
 import syncPlayManager from 'syncPlayManager';
+import SyncPlaySettingsEditor from 'syncPlaySettingsEditor';
 import loading from 'loading';
 import toast from 'toast';
 import actionsheet from 'actionsheet';
@@ -119,6 +120,14 @@ class GroupSelectionMenu {
         }
 
         menuItems.push({
+            name: globalize.translate('Settings'),
+            icon: 'video_settings',
+            id: 'settings',
+            selected: false,
+            secondaryText: globalize.translate('LabelSyncPlaySettingsDescription')
+        });
+
+        menuItems.push({
             name: globalize.translate('LabelSyncPlayLeaveGroup'),
             icon: 'meeting_room',
             id: 'leave-group',
@@ -141,6 +150,11 @@ class GroupSelectionMenu {
                 syncPlayManager.haltGroupPlayback(apiClient);
             } else if (id == 'leave-group') {
                 apiClient.leaveSyncPlayGroup();
+            } else if (id == 'settings') {
+                new SyncPlaySettingsEditor(syncPlayManager.timeSyncCore, {
+                    groupId: groupInfo.GroupId,
+                    groupName: groupInfo.GroupName
+                });
             }
         }).catch((error) => {
             console.error('SyncPlay: unexpected error showing group menu:', error);
