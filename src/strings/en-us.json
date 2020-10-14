@@ -798,6 +798,8 @@
     "LabelSyncPlaySettingsGroupNameHelp": "Change the group's name.",
     "LabelSyncPlaySettingsEnableWebRTC": "Enable WebRTC",
     "LabelSyncPlaySettingsEnableWebRTCHelp": "Enable discovery of peers on local network. Discovered peers will be available for time syncing.",
+    "LabelSyncPlaySettingsP2PTracker": "Tracker:",
+    "LabelSyncPlaySettingsP2PTrackerHelp": "Set tracker to enable P2P sharing of playing media. Needs playback restart.",
     "LabelSyncPlaySettingsTimeSync": "Time sync:",
     "LabelSyncPlaySettingsTimeSyncHelp": "Pick the device to time sync with. Picking a local peer ensures less noticeable delay between devices on the same network.",
     "LabelSyncPlaySettingsSyncCorrection": "Sync Correction",

@@ -43,8 +43,14 @@ _define('jQuery', function() {
 
 // hlsjs
 const hlsjs = require('hls.js');
+const p2pmlCore = require('p2p-media-loader-core');
+const p2pmlHlsjs = require('p2p-media-loader-hlsjs');
 _define('hlsjs', function() {
-    return hlsjs;
+    return {
+        hlsjs: hlsjs,
+        p2pmlCore: p2pmlCore,
+        p2pmlHlsjs: p2pmlHlsjs
+    };
 });
 
 // howler

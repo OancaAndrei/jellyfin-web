@@ -88,6 +88,7 @@ class SyncPlaySettingsEditor {
         const { context } = this;
         context.querySelector('#txtGroupName').value = this.options.groupName;
         context.querySelector('#chkWebRTC').checked = syncPlaySettings.getBool('enableWebRTC');
+        context.querySelector('#txtP2PTracker').value = syncPlaySettings.get('p2pTracker');
         context.querySelector('#chkSyncCorrection').checked = syncPlaySettings.getBool('enableSyncCorrection');
 
         this.refreshTimeSyncDevices();
@@ -129,10 +130,12 @@ class SyncPlaySettingsEditor {
         const { context } = this;
         const groupName = context.querySelector('#txtGroupName').value;
         const enableWebRTC = context.querySelector('#chkWebRTC').checked;
+        const p2pTracker = context.querySelector('#txtP2PTracker').value;
         const timeSyncDevice = context.querySelector('#selectTimeSync').value;
         const syncCorrection = context.querySelector('#chkSyncCorrection').checked;
 
         syncPlaySettings.set('enableWebRTC', enableWebRTC);
+        syncPlaySettings.set('p2pTracker', p2pTracker);
         syncPlaySettings.set('timeSyncDevice', timeSyncDevice);
         syncPlaySettings.set('enableSyncCorrection', syncCorrection);
 

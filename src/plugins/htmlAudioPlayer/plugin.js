@@ -51,8 +51,10 @@ function supportsFade() {
 }
 
 function requireHlsPlayer(callback) {
-    import('hlsjs').then(({ default: hls }) => {
-        window.Hls = hls;
+    import('hlsjs').then((result) => {
+        window.Hls = result.hlsjs;
+        window.p2pmlCore = result.p2pmlCore;
+        window.p2pmlHlsjs = result.p2pmlHlsjs;
         callback();
     });
 }
@@ -131,9 +133,40 @@ class HtmlAudioPlayer {
             return enableHlsPlayer(val, options.item, options.mediaSource, 'Audio').then(function () {
                 return new Promise(function (resolve, reject) {
                     requireHlsPlayer(function () {
-                        const hls = new Hls({
-                            manifestLoadingTimeOut: 20000
-                        });
+                        let hls;
+                        if (options.enableP2P && p2pmlHlsjs.Engine.isSupported()) {
+                            const trackers = options.trackers || [];
+                            const config = {
+                                loader: {
+                                    trackerAnnounce: trackers,
+                                    rtcConfig: {
+                                        iceServers: [
+                                            // Local peers only
+                                        ]
+                                    }
+                                }
+                            };
+
+                            const engine = new p2pmlHlsjs.Engine(config);
+                            engine.on('peer_connect', peer => console.debug('P2PML Hls.js peer_connect', peer.id, peer.remoteAddress));
+                            engine.on('peer_close', peerId => console.debug('P2PML Hls.js peer_close', peerId));
+                            engine.on('segment_loaded', (segment, peerId) => console.debug('P2PML Hls.js segment_loaded from', peerId ? `peer ${peerId}` : 'HTTP', segment.url));
+
+                            hls = new Hls({
+                                manifestLoadingTimeOut: 20000,
+                                liveSyncDurationCount: 7, // To have at least 7 segments in queue
+                                loader: engine.createLoaderClass()
+                            });
+
+                            p2pmlHlsjs.initHlsJsPlayer(hls);
+                            console.log('HtmlVideoPlayer: P2P Media Loader is enabled!');
+                        } else {
+                            hls = new Hls({
+                                manifestLoadingTimeOut: 20000
+                            });
+                            console.log('HtmlVideoPlayer: P2P Media Loader is not enabled.');
+                        }
+
                         hls.loadSource(val);
                         hls.attachMedia(elem);
 

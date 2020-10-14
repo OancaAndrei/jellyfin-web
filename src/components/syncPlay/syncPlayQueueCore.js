@@ -8,6 +8,7 @@
 import events from 'events';
 import playbackManager from 'playbackManager';
 import * as syncPlayHelper from 'syncPlayHelper';
+import syncPlaySettings from 'syncPlaySettings';
 import SyncPlayQueueManager from 'syncPlayQueueManager';
 import toast from 'toast';
 import globalize from 'globalize';
@@ -152,7 +153,11 @@ class SyncPlayQueueCore {
             ids: this.playQueueManager.getPlaylistAsItemIds(),
             startPositionTicks: startPositionTicks,
             startIndex: this.playQueueManager.getCurrentPlaylistIndex(),
-            serverId: serverId
+            serverId: serverId,
+            enableP2P: true,
+            trackers: [
+                syncPlaySettings.get('p2pTracker')
+            ]
         }).then(() => {
             this.scheduleReadyRequestOnPlaybackStart('startPlayback');
         }).catch((error) => {
