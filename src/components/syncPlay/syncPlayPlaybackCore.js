@@ -9,16 +9,6 @@ import * as syncPlayHelper from 'syncPlayHelper';
 import syncPlaySettings from 'syncPlaySettings';
 
 /**
- * Playback synchronization
- */
-const MaxAcceptedDelaySpeedToSync = 60.0; // milliseconds, delay after which SpeedToSync is enabled
-const MaxAcceptedDelaySkipToSync = 400.0; // milliseconds, delay after which SkipToSync is enabled
-const SyncMethodThreshold = 3000.0; // milliseconds, switches between SpeedToSync or SkipToSync
-const SpeedToSyncTime = 1000.0; // milliseconds, duration in which the playback is sped up
-const MaxAttemptsSpeedToSync = 3; // attempts before disabling SpeedToSync
-const MaxAttemptsSync = 3; // attempts before increasing sync level
-
-/**
  * Globals
  */
 var syncPlayManager;
@@ -51,6 +41,8 @@ class SyncPlayPlaybackCore {
         this.scheduledCommand = null;
         this.syncTimeout = null;
 
+        this.loadPreferences();
+
         events.on(playbackManager, 'playbackstart', (player, state) => {
             this.onPlaybackStart(player, state);
         });
@@ -65,10 +57,25 @@ class SyncPlayPlaybackCore {
 
         this.bindToPlayer(playbackManager.getCurrentPlayer());
 
-        events.on(syncPlaySettings, 'enableSyncCorrection', (event, value, oldValue) => {
-            this.enableSyncCorrection = value !== 'false';
+        events.on(syncPlaySettings, 'update', (event) => {
+            this.loadPreferences();
         });
+    }
 
+    loadPreferences() {
+        // Minimum required delay for SpeedToSync to kick in, in milliseconds
+        this.minDelaySpeedToSync = syncPlaySettings.getFloat('minDelaySpeedToSync', 60.0);
+        // Maximum delay after which SkipToSync is used instead of SpeedToSync, in milliseconds
+        this.maxDelaySpeedToSync = syncPlaySettings.getFloat('maxDelaySpeedToSync', 3000.0);
+        // duration in which the playback is sped up, in milliseconds
+        this.speedToSyncDuration = syncPlaySettings.getFloat('speedToSyncDuration', 1000.0);
+        // Minimum required delay for SkipToSync to kick in, in milliseconds
+        this.minDelaySkipToSync = syncPlaySettings.getFloat('minDelaySkipToSync', 400.0);
+        // Whether SpeedToSync should be used
+        this.useSpeedToSync = syncPlaySettings.getBool('useSpeedToSync');
+        // Whether SkipToSync should be used
+        this.useSkipToSync = syncPlaySettings.getBool('useSkipToSync');
+        // Whether sync correction during playback is active
         this.enableSyncCorrection = syncPlaySettings.getBool('enableSyncCorrection');
     }
 
@@ -354,6 +361,7 @@ class SyncPlayPlaybackCore {
      */
     scheduleUnpause(playAtTime, positionTicks) {
         this.clearScheduledCommand();
+        const enableSyncTimeout = this.maxDelaySpeedToSync / 2.0;
         const currentTime = new Date();
         const playAtTimeLocal = this.timeSyncCore.remoteDateToLocal(playAtTime);
 
@@ -362,10 +370,8 @@ class SyncPlayPlaybackCore {
 
             // Seek only if delay is noticeable
             const currentPositionTicks = playbackManager.currentTime() * syncPlayHelper.TicksPerMillisecond;
-            const maxAcceptedDelaySkipToSync = MaxAcceptedDelaySkipToSync * this.syncLevel;
-            if ((currentPositionTicks - positionTicks) > maxAcceptedDelaySkipToSync) {
+            if ((currentPositionTicks - positionTicks) > this.minDelaySkipToSync * syncPlayHelper.TicksPerMillisecond) {
                 this.localSeek(positionTicks);
-                // TODO: should request group-wait?
             }
 
             this.scheduledCommand = setTimeout(() => {
@@ -374,7 +380,7 @@ class SyncPlayPlaybackCore {
 
                 this.syncTimeout = setTimeout(() => {
                     this.syncEnabled = true;
-                }, SyncMethodThreshold / 2);
+                }, enableSyncTimeout);
             }, playTimeout);
 
             console.debug('Scheduled unpause in', playTimeout / 1000.0, 'seconds.');
@@ -385,11 +391,13 @@ class SyncPlayPlaybackCore {
                 this.localSeek(serverPositionTicks);
             });
             this.localUnpause();
-            events.trigger(syncPlayManager, 'notify-osd', ['unpause']);
+            setTimeout(() => {
+                events.trigger(syncPlayManager, 'notify-osd', ['unpause']);
+            }, 100);
 
             this.syncTimeout = setTimeout(() => {
                 this.syncEnabled = true;
-            }, SyncMethodThreshold / 2);
+            }, enableSyncTimeout);
 
             console.debug('SyncPlay scheduleUnpause: now.');
         }
@@ -616,14 +624,14 @@ class SyncPlayPlaybackCore {
     }
 
     /**
-     * Estimates current value for ticks given a paste state.
+     * Estimates current value for ticks given a past state.
      * @param {number} ticks The value of the ticks.
      * @param {Date} when The point in time for the value of the ticks.
      */
     estimateCurrentTicks(ticks, when) {
         const currentTime = new Date();
-        const timeOffset = this.timeSyncCore.getTimeOffset();
-        return ticks + ((currentTime - when) + timeOffset) * syncPlayHelper.TicksPerMillisecond;
+        const remoteTime = this.timeSyncCore.localDateToRemote(currentTime);
+        return ticks + (remoteTime.getTime() - when.getTime()) * syncPlayHelper.TicksPerMillisecond;
     }
 
     /**
@@ -641,12 +649,8 @@ class SyncPlayPlaybackCore {
         const self = syncPlayManager.playbackCore;
 
         // See comments in constants section for more info
-        const maxAcceptedDelaySpeedToSync = MaxAcceptedDelaySpeedToSync * self.syncLevel;
-        const maxAcceptedDelaySkipToSync = MaxAcceptedDelaySkipToSync * self.syncLevel;
-        const syncMethodThreshold = SyncMethodThreshold * self.syncLevel;
-        let speedToSyncTime = SpeedToSyncTime * self.syncLevel;
-        const maxAttemptsSpeedToSync = MaxAttemptsSpeedToSync * self.syncLevel;
-        const maxAttemptsSync = MaxAttemptsSync * self.syncLevel;
+        const syncMethodThreshold = self.maxDelaySpeedToSync;
+        let speedToSyncTime = self.speedToSyncDuration;
 
         // Ignore sync when no player is active
         if (!self.isPlaybackActive()) {
@@ -666,12 +670,10 @@ class SyncPlayPlaybackCore {
         if (elapsed < syncMethodThreshold / 2) return;
         self.lastSyncTime = currentTime;
 
-        const playAtTime = lastCommand.When;
-
+        // Get current PositionTicks
         const currentPositionTicks = playbackManager.currentTime() * syncPlayHelper.TicksPerMillisecond;
         // Estimate PositionTicks on server
-        const timeOffset = self.timeSyncCore.getTimeOffset();
-        const serverPositionTicks = lastCommand.PositionTicks + ((currentTime - playAtTime) + timeOffset) * syncPlayHelper.TicksPerMillisecond;
+        const serverPositionTicks = self.estimateCurrentTicks(lastCommand.PositionTicks, lastCommand.When);
         // Measure delay that needs to be recovered
         // diff might be caused by the player internally starting the playback
         const diffMillis = (serverPositionTicks - currentPositionTicks) / syncPlayHelper.TicksPerMillisecond;
@@ -683,12 +685,7 @@ class SyncPlayPlaybackCore {
             // TODO: SpeedToSync sounds bad on songs
             // TODO: SpeedToSync is failing on Safari (Mojave); even if playbackRate is supported, some delay seems to exist
             // TODO: both SpeedToSync and SpeedToSync seem to have a hard time keeping up on Android Chrome as well
-            if (self.playbackRateSupported && absDiffMillis > maxAcceptedDelaySpeedToSync && absDiffMillis < syncMethodThreshold) {
-                // Disable SpeedToSync if it keeps failing
-                if (self.syncAttempts > maxAttemptsSpeedToSync) {
-                    self.playbackRateSupported = false;
-                }
-
+            if (self.playbackRateSupported && self.useSpeedToSync && absDiffMillis >= self.minDelaySpeedToSync && absDiffMillis < self.maxDelaySpeedToSync) {
                 // Fix negative speed when client is ahead of time more than speedToSyncTime
                 const MinSpeed = 0.1;
                 if (diffMillis <= -speedToSyncTime * MinSpeed) {
@@ -716,22 +713,7 @@ class SyncPlayPlaybackCore {
                 }, speedToSyncTime);
 
                 console.log('SyncPlay SpeedToSync', speed);
-            } else if (absDiffMillis > maxAcceptedDelaySkipToSync) {
-                if (self.syncAttempts > maxAttemptsSync) {
-                    // TODO: move these to some configuration accessible to the user
-
-                    // Disable SkipToSync if it keeps failing
-                    // self.syncEnabled = false;
-                    // syncPlayManager.showSyncIcon('Sync disabled (too many attempts)');
-                    // console.log('SyncPlay SkipToSync disabled after', self.syncAttempts, 'attempts.');
-
-                    // Switch to a less demanding level of sync
-                    self.syncLevel++;
-                    self.playbackRateSupported = true;
-                    syncPlayManager.showSyncIcon(`Sync level ${self.syncLevel} set.`);
-                    console.log('SyncPlay switching to sync level', self.syncLevel, '.');
-                    return;
-                }
+            } else if (self.useSkipToSync && absDiffMillis >= self.minDelaySkipToSync) {
                 // SkipToSync method
                 self.localSeek(serverPositionTicks);
                 self.syncEnabled = false;

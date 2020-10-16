@@ -18,6 +18,7 @@ class TimeSyncCore {
         this.peers = {};
         this.peerIds = [];
         this.activePeerId = 'server';
+        this.extraTimeOffset = syncPlaySettings.getFloat('extraTimeOffset', 0.0);
 
         events.on(this.webRTCCore, 'peer-helo', (event, peerId) => {
             this.onPeerConnected(peerId);
@@ -51,6 +52,10 @@ class TimeSyncCore {
 
         events.on(syncPlaySettings, 'timeSyncDevice', (event, value, oldValue) => {
             this.setActiveDevice(value);
+        });
+
+        events.on(syncPlaySettings, 'extraTimeOffset', (event, value, oldValue) => {
+            this.extraTimeOffset = syncPlaySettings.getFloat('extraTimeOffset', 0.0);
         });
     }
 
@@ -197,18 +202,21 @@ class TimeSyncCore {
      * @returns {Date} Local time.
      */
     remoteDateToLocal(remote) {
+        let date;
         if (this.activePeerId !== 'server') {
             const peer = this.getPeerById(this.activePeerId);
             if (!peer) {
                 this.activePeerId = 'server';
-                return this.remoteDateToLocal(remote);
+                date = this.remoteDateToLocal(remote);
+            } else {
+                const peerDate = peer.serverDateToPeer(remote);
+                date = peer.remoteDateToLocal(peerDate);
             }
-
-            const peerDate = peer.serverDateToPeer(remote);
-            return peer.remoteDateToLocal(peerDate);
         } else {
-            return this.timeSyncServer.remoteDateToLocal(remote);
+            date = this.timeSyncServer.remoteDateToLocal(remote);
         }
+
+        return this.offsetDate(date, -this.extraTimeOffset);
     }
 
     /**
@@ -217,18 +225,21 @@ class TimeSyncCore {
      * @returns {Date} Server time.
      */
     localDateToRemote(local) {
+        let date;
         if (this.activePeerId !== 'server') {
             const peer = this.getPeerById(this.activePeerId);
             if (!peer) {
                 this.activePeerId = 'server';
-                return this.localDateToRemote(local);
+                date = this.localDateToRemote(local);
+            } else {
+                const peerDate = peer.localDateToRemote(local);
+                date = peer.peerDateToServer(peerDate);
             }
-
-            const peerDate = peer.localDateToRemote(local);
-            return peer.peerDateToServer(peerDate);
         } else {
-            return this.timeSyncServer.localDateToRemote(local);
+            date = this.timeSyncServer.localDateToRemote(local);
         }
+
+        return this.offsetDate(date, this.extraTimeOffset);
     }
 
     /**
@@ -238,10 +249,20 @@ class TimeSyncCore {
     getTimeOffset() {
         const peer = this.getPeerById(this.activePeerId);
         if (peer) {
-            return peer.getTimeOffset() + peer.getPeerTimeOffset();
+            return peer.getTimeOffset() + peer.getPeerTimeOffset() + this.extraTimeOffset;
         } else {
-            return this.timeSyncServer.getTimeOffset();
+            return this.timeSyncServer.getTimeOffset() + this.extraTimeOffset;
         }
+    }
+
+    /**
+     * Offsets a given date by a given ammount of milliseconds.
+     * @param {Date} date The date.
+     * @param {number} offset The offset, in milliseconds.
+     * @returns {Date} The offset date.
+     */
+    offsetDate(date, offset) {
+        return new Date(date.getTime() + offset);
     }
 }
 

@@ -89,7 +89,14 @@ class SyncPlaySettingsEditor {
         context.querySelector('#txtGroupName').value = this.options.groupName;
         context.querySelector('#chkWebRTC').checked = syncPlaySettings.getBool('enableWebRTC');
         context.querySelector('#txtP2PTracker').value = syncPlaySettings.get('p2pTracker');
+        context.querySelector('#txtExtraTimeOffset').value = syncPlaySettings.getFloat('extraTimeOffset', 0.0);
         context.querySelector('#chkSyncCorrection').checked = syncPlaySettings.getBool('enableSyncCorrection');
+        context.querySelector('#txtMinDelaySpeedToSync').value = syncPlaySettings.getFloat('minDelaySpeedToSync', 60.0);
+        context.querySelector('#txtMaxDelaySpeedToSync').value = syncPlaySettings.getFloat('maxDelaySpeedToSync', 3000.0);
+        context.querySelector('#txtSpeedToSyncDuration').value = syncPlaySettings.getFloat('speedToSyncDuration', 1000.0);
+        context.querySelector('#txtMinDelaySkipToSync').value = syncPlaySettings.getFloat('minDelaySkipToSync', 400.0);
+        context.querySelector('#chkSpeedToSync').checked = syncPlaySettings.getBool('useSpeedToSync');
+        context.querySelector('#chkSkipToSync').checked = syncPlaySettings.getBool('useSkipToSync');
 
         this.refreshTimeSyncDevices();
         const timeSyncSelect = context.querySelector('#selectTimeSync');
@@ -132,12 +139,28 @@ class SyncPlaySettingsEditor {
         const enableWebRTC = context.querySelector('#chkWebRTC').checked;
         const p2pTracker = context.querySelector('#txtP2PTracker').value;
         const timeSyncDevice = context.querySelector('#selectTimeSync').value;
+        const extraTimeOffset = context.querySelector('#txtExtraTimeOffset').value;
         const syncCorrection = context.querySelector('#chkSyncCorrection').checked;
+        const minDelaySpeedToSync = context.querySelector('#txtMinDelaySpeedToSync').value;
+        const maxDelaySpeedToSync = context.querySelector('#txtMaxDelaySpeedToSync').value;
+        const speedToSyncDuration = context.querySelector('#txtSpeedToSyncDuration').value;
+        const minDelaySkipToSync = context.querySelector('#txtMinDelaySkipToSync').value;
+        const useSpeedToSync = context.querySelector('#chkSpeedToSync').checked;
+        const useSkipToSync = context.querySelector('#chkSkipToSync').checked;
 
         syncPlaySettings.set('enableWebRTC', enableWebRTC);
         syncPlaySettings.set('p2pTracker', p2pTracker);
         syncPlaySettings.set('timeSyncDevice', timeSyncDevice);
+        syncPlaySettings.set('extraTimeOffset', extraTimeOffset);
         syncPlaySettings.set('enableSyncCorrection', syncCorrection);
+        syncPlaySettings.set('minDelaySpeedToSync', minDelaySpeedToSync);
+        syncPlaySettings.set('maxDelaySpeedToSync', maxDelaySpeedToSync);
+        syncPlaySettings.set('speedToSyncDuration', speedToSyncDuration);
+        syncPlaySettings.set('minDelaySkipToSync', minDelaySkipToSync);
+        syncPlaySettings.set('useSpeedToSync', useSpeedToSync);
+        syncPlaySettings.set('useSkipToSync', useSkipToSync);
+
+        events.trigger(syncPlaySettings, 'update');
 
         // TODO: Update group name
         // const apiClient = window.connectionManager.getApiClient(this.options.serverId);

@@ -57,6 +57,20 @@ class SyncPlaySettings {
     getBool(name) {
         return this.get(name) !== 'false';
     }
+
+    /**
+     * Gets the value of a setting as float number.
+     * @param {string} name The name of the setting.
+     * @returns {number} The value.
+     */
+    getFloat(name, defaultValue = 0) {
+        const value = this.get(name);
+        if (value === null || value === '' || isNaN(value)) {
+            return defaultValue;
+        } else {
+            return Number.parseFloat(value);
+        }
+    }
 }
 
 /** SyncPlaySettings singleton. */

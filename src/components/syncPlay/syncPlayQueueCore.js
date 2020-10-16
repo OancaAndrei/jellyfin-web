@@ -148,15 +148,16 @@ class SyncPlayQueueCore {
         const oldStartPositionTicks = this.playQueueManager.getStartPositionTicks();
         const lastUpdate = this.playQueueManager.getLastUpdate();
         const startPositionTicks = syncPlayManager.playbackCore.estimateCurrentTicks(oldStartPositionTicks, lastUpdate);
+        const p2pTracker = syncPlaySettings.get('p2pTracker');
 
         this.localPlay({
             ids: this.playQueueManager.getPlaylistAsItemIds(),
             startPositionTicks: startPositionTicks,
             startIndex: this.playQueueManager.getCurrentPlaylistIndex(),
             serverId: serverId,
-            enableP2P: true,
+            enableP2P: p2pTracker !== '',
             trackers: [
-                syncPlaySettings.get('p2pTracker')
+                p2pTracker
             ]
         }).then(() => {
             this.scheduleReadyRequestOnPlaybackStart('startPlayback');
