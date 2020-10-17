@@ -37,8 +37,8 @@ class SyncPlayPlaybackCore {
         this.currentPlayer = null;
         this.localPlayerPlaybackRate = 1.0; // used to restore user PlaybackRate
 
-        this.lastCommand = null; // Last playback command received from server
-        this.scheduledCommand = null;
+        this.lastCommand = null; // Last scheduled playback command, might not be the latest one
+        this.scheduledCommandTimeout = null;
         this.syncTimeout = null;
 
         this.loadPreferences();
@@ -67,7 +67,7 @@ class SyncPlayPlaybackCore {
         this.minDelaySpeedToSync = syncPlaySettings.getFloat('minDelaySpeedToSync', 60.0);
         // Maximum delay after which SkipToSync is used instead of SpeedToSync, in milliseconds
         this.maxDelaySpeedToSync = syncPlaySettings.getFloat('maxDelaySpeedToSync', 3000.0);
-        // duration in which the playback is sped up, in milliseconds
+        // Time during which the playback is sped up, in milliseconds
         this.speedToSyncDuration = syncPlaySettings.getFloat('speedToSyncDuration', 1000.0);
         // Minimum required delay for SkipToSync to kick in, in milliseconds
         this.minDelaySkipToSync = syncPlaySettings.getFloat('minDelaySkipToSync', 400.0);
@@ -211,7 +211,7 @@ class SyncPlayPlaybackCore {
     }
 
     /**
-     * Removes the bindings to the current player's events.
+     * Removes the bindings from the current player's events.
      */
     releaseCurrentPlayer() {
         var player = this.currentPlayer;
@@ -264,7 +264,7 @@ class SyncPlayPlaybackCore {
     }
 
     /**
-     * Applies a command and checks for playback state if a duplicate command is received.
+     * Applies a command and checks the playback state if a duplicate command is received.
      * @param {Object} command The playback command.
      */
     applyCommand(command) {
@@ -282,7 +282,7 @@ class SyncPlayPlaybackCore {
             const currentTime = new Date();
             const whenLocal = this.timeSyncCore.remoteDateToLocal(command.When);
             if (whenLocal > currentTime) {
-                // Command should be scheduled, not much we can do
+                // Command should be already scheduled, not much we can do
                 // TODO: should re-apply or just drop?
                 console.debug('SyncPlay applyCommand: command already scheduled.', command);
                 return;
@@ -313,6 +313,7 @@ class SyncPlayPlaybackCore {
                         // During seek, playback is paused
                         if (isPlaying || currentPositionTicks !== command.PositionTicks) {
                             // Account for player imperfections, we got half a second of tollerance we can play with
+                            // (the server tollerates a range of values when client reports that is ready)
                             const rangeWidth = 100; // in milliseconds
                             const randomOffsetTicks = Math.round((Math.random() - 0.5) * rangeWidth) * syncPlayHelper.TicksPerMillisecond;
                             this.scheduleSeek(command.When, command.PositionTicks + randomOffsetTicks);
@@ -364,17 +365,17 @@ class SyncPlayPlaybackCore {
         const enableSyncTimeout = this.maxDelaySpeedToSync / 2.0;
         const currentTime = new Date();
         const playAtTimeLocal = this.timeSyncCore.remoteDateToLocal(playAtTime);
+        const currentPositionTicks = playbackManager.currentTime() * syncPlayHelper.TicksPerMillisecond;
 
         if (playAtTimeLocal > currentTime) {
             const playTimeout = playAtTimeLocal - currentTime;
 
             // Seek only if delay is noticeable
-            const currentPositionTicks = playbackManager.currentTime() * syncPlayHelper.TicksPerMillisecond;
             if ((currentPositionTicks - positionTicks) > this.minDelaySkipToSync * syncPlayHelper.TicksPerMillisecond) {
                 this.localSeek(positionTicks);
             }
 
-            this.scheduledCommand = setTimeout(() => {
+            this.scheduledCommandTimeout = setTimeout(() => {
                 this.localUnpause();
                 events.trigger(syncPlayManager, 'notify-osd', ['unpause']);
 
@@ -386,7 +387,7 @@ class SyncPlayPlaybackCore {
             console.debug('Scheduled unpause in', playTimeout / 1000.0, 'seconds.');
         } else {
             // Group playback already started
-            const serverPositionTicks = positionTicks + (currentTime - playAtTimeLocal) * syncPlayHelper.TicksPerMillisecond;
+            const serverPositionTicks = this.estimateCurrentTicks(positionTicks, playAtTime);
             syncPlayHelper.waitForEventOnce(syncPlayManager, 'unpause').then(() => {
                 this.localSeek(serverPositionTicks);
             });
@@ -399,7 +400,7 @@ class SyncPlayPlaybackCore {
                 this.syncEnabled = true;
             }, enableSyncTimeout);
 
-            console.debug('SyncPlay scheduleUnpause: now.');
+            console.debug(`SyncPlay scheduleUnpause: unpause now from ${serverPositionTicks} (was at ${currentPositionTicks}).`);
         }
     }
 
@@ -425,7 +426,7 @@ class SyncPlayPlaybackCore {
 
         if (pauseAtTimeLocal > currentTime) {
             const pauseTimeout = pauseAtTimeLocal - currentTime;
-            this.scheduledCommand = setTimeout(callback, pauseTimeout);
+            this.scheduledCommandTimeout = setTimeout(callback, pauseTimeout);
 
             console.debug('Scheduled pause in', pauseTimeout / 1000.0, 'seconds.');
         } else {
@@ -449,7 +450,7 @@ class SyncPlayPlaybackCore {
 
         if (stopAtTimeLocal > currentTime) {
             const stopTimeout = stopAtTimeLocal - currentTime;
-            this.scheduledCommand = setTimeout(callback, stopTimeout);
+            this.scheduledCommandTimeout = setTimeout(callback, stopTimeout);
 
             console.debug('Scheduled stop in', stopTimeout / 1000.0, 'seconds.');
         } else {
@@ -483,7 +484,7 @@ class SyncPlayPlaybackCore {
 
         if (seekAtTimeLocal > currentTime) {
             const seekTimeout = seekAtTimeLocal - currentTime;
-            this.scheduledCommand = setTimeout(callback, seekTimeout);
+            this.scheduledCommandTimeout = setTimeout(callback, seekTimeout);
 
             console.debug('Scheduled seek in', seekTimeout / 1000.0, 'seconds.');
         } else {
@@ -496,7 +497,7 @@ class SyncPlayPlaybackCore {
      * Clears the current scheduled command.
      */
     clearScheduledCommand() {
-        clearTimeout(this.scheduledCommand);
+        clearTimeout(this.scheduledCommandTimeout);
         clearTimeout(this.syncTimeout);
 
         this.syncEnabled = false;

@@ -144,10 +144,21 @@ class SyncPlayQueueCore {
             return;
         }
 
+        // Estimate start position ticks from last playback command, if available
+        const playbackCommand = syncPlayManager.getLastPlaybackCommand();
+        const lastQueueUpdateDate = this.playQueueManager.getLastUpdate();
+        let startPositionTicks = 0;
+
+        if (playbackCommand && playbackCommand.EmittedAt.getTime() >= lastQueueUpdateDate.getTime()) {
+            // Prefer playback commands as they're more frequent (and also because playback position is PlaybackCore's concern)
+            startPositionTicks = syncPlayManager.playbackCore.estimateCurrentTicks(playbackCommand.PositionTicks, playbackCommand.When);
+        } else {
+            // A PlayQueueUpdate is emited only on queue changes so it's less reliable for playback position syncing
+            const oldStartPositionTicks = this.playQueueManager.getStartPositionTicks();
+            startPositionTicks = syncPlayManager.playbackCore.estimateCurrentTicks(oldStartPositionTicks, lastQueueUpdateDate);
+        }
+
         const serverId = apiClient.serverInfo().Id;
-        const oldStartPositionTicks = this.playQueueManager.getStartPositionTicks();
-        const lastUpdate = this.playQueueManager.getLastUpdate();
-        const startPositionTicks = syncPlayManager.playbackCore.estimateCurrentTicks(oldStartPositionTicks, lastUpdate);
         const p2pTracker = syncPlaySettings.get('p2pTracker');
 
         this.localPlay({

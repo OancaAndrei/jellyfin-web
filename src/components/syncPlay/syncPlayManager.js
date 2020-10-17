@@ -29,19 +29,11 @@ class SyncPlayManager {
         this.groupInfo = null;
         this.syncPlayEnabledAt = null; // Server time of when SyncPlay has been enabled
         this.syncPlayReady = false; // SyncPlay is ready after first ping to server
-        this.followingGroupPlayback = true; // Follow or ignore group playback
-
         this.queuedCommand = null; // Queued playback command, applied when SyncPlay is ready
-
-        this.notifySyncPlayReady = false;
+        this.followingGroupPlayback = true; // Follow or ignore group playback
+        this.lastPlaybackCommand = null; // Last received playback command from server, tracks state of group
 
         events.on(this.timeSyncCore, 'time-sync-server-update', (event, timeOffset, ping) => {
-            if (this.notifySyncPlayReady) {
-                this.syncPlayReady = true;
-                events.trigger(this, 'ready');
-                this.notifySyncPlayReady = false;
-            }
-
             // Report ping
             if (this.syncEnabled) {
                 const apiClient = window.connectionManager.currentApiClient();
@@ -50,22 +42,14 @@ class SyncPlayManager {
                 });
             }
         });
+    }
 
-        events.on(this, 'playbackstop', (event, stopInfo) => {
-            this.queuedCommand = null;
-        });
-
-        events.on(this.webRTCCore, 'peer-helo', (event, peerId) => {
-
-        });
-
-        events.on(this.webRTCCore, 'peer-message', (event, peerId, message, receivedAt) => {
-
-        });
-
-        events.on(this.webRTCCore, 'peer-bye', (event, peerId) => {
-
-        });
+    /**
+     * Gets the last playback command, if any.
+     * @returns {Object} The playback command.
+     */
+    getLastPlaybackCommand() {
+        return this.lastPlaybackCommand;
     }
 
     /**
@@ -136,8 +120,19 @@ class SyncPlayManager {
     processCommand(cmd, apiClient) {
         if (cmd === null) return;
 
+        if (typeof cmd.When === 'string') {
+            cmd.When = new Date(cmd.When);
+            cmd.EmittedAt = new Date(cmd.EmittedAt);
+            cmd.PositionTicks = cmd.PositionTicks ? parseInt(cmd.PositionTicks) : null;
+        }
+
         if (!this.isSyncPlayEnabled()) {
             console.debug('SyncPlay processCommand: SyncPlay not enabled, ignoring command', cmd);
+            return;
+        }
+
+        if (cmd.EmittedAt.getTime() < this.syncPlayEnabledAt.getTime()) {
+            console.debug('SyncPlay processCommand: ignoring old command', cmd);
             return;
         }
 
@@ -147,17 +142,10 @@ class SyncPlayManager {
             return;
         }
 
+        this.lastPlaybackCommand = cmd;
+
         if (!this.isPlaybackActive()) {
             console.debug('SyncPlay processCommand: no active player!');
-            return;
-        }
-
-        cmd.When = new Date(cmd.When);
-        cmd.EmittedAt = new Date(cmd.EmittedAt);
-        cmd.PositionTicks = cmd.PositionTicks ? parseInt(cmd.PositionTicks) : null;
-
-        if (cmd.EmittedAt.getTime() < this.syncPlayEnabledAt.getTime()) {
-            console.debug('SyncPlay processCommand: ignoring old command', cmd);
             return;
         }
 
@@ -253,13 +241,13 @@ class SyncPlayManager {
         events.trigger(this, 'enabled', [true]);
 
         // Wait for time sync to be ready
-        syncPlayHelper.waitForEventOnce(this, 'ready').then(() => {
+        syncPlayHelper.waitForEventOnce(this.timeSyncCore, 'time-sync-server-update').then(() => {
+            this.syncPlayReady = true;
             this.processCommand(this.queuedCommand, apiClient);
             this.queuedCommand = null;
         });
 
         this.syncPlayReady = false;
-        this.notifySyncPlayReady = true;
         this.followingGroupPlayback = true;
 
         this.timeSyncCore.forceUpdate();
@@ -284,6 +272,7 @@ class SyncPlayManager {
         this.syncPlayEnabledAt = null;
         this.syncPlayReady = false;
         this.followingGroupPlayback = true;
+        this.lastPlaybackCommand = null;
         this.queuedCommand = null;
         this.playbackCore.syncEnabled = false;
         events.trigger(this, 'enabled', [false]);
