@@ -53,6 +53,87 @@ class SyncPlayManager {
     }
 
     /**
+     * Converts a given string to a Guid string.
+     * @param {string} input The input string.
+     * @returns {string} The Guid string.
+     */
+    stringToGuid(input) {
+        return input.replace(/([0-z]{8})([0-z]{4})([0-z]{4})([0-z]{4})([0-z]{12})/, '$1-$2-$3-$4-$5');
+    }
+
+    /**
+     * Whether the given user is an administrator for this group.
+     * @param {string} userId The id of the user.
+     * @returns {boolean} _true_ if the user is an administrator, _false_ otherwise.
+     */
+    isUserAdministrator(userId) {
+        if (this.groupInfo) {
+            return this.groupInfo.Administrators.indexOf(userId) !== -1;
+        } else {
+            return false;
+        }
+    }
+
+    /**
+     * Whether the current user is an administrator for this group.
+     * @returns {boolean} _true_ if the user is an administrator, _false_ otherwise.
+     */
+    isAdministrator() {
+        const apiClient = window.connectionManager.currentApiClient();
+        const userId = this.stringToGuid(apiClient.getCurrentUserId());
+
+        return this.isUserAdministrator(userId);
+    }
+
+    /**
+     * Whether the given user has playback access for this group.
+     * @param {string} userId The id of the user.
+     * @returns {boolean} _true_ if the user has playback access, _false_ otherwise.
+     */
+    hasUserPlaybackAccess(userId) {
+        if (this.groupInfo && this.groupInfo.AccessList && this.groupInfo.AccessList[userId]) {
+            return this.groupInfo.AccessList[userId].PlaybackAccess;
+        } else {
+            return false;
+        }
+    }
+
+    /**
+     * Whether the current user has playback access for this group.
+     * @returns {boolean} _true_ if the user has playback access, _false_ otherwise.
+     */
+    hasPlaybackAccess() {
+        const apiClient = window.connectionManager.currentApiClient();
+        const userId = this.stringToGuid(apiClient.getCurrentUserId());
+
+        return this.hasUserPlaybackAccess(userId);
+    }
+
+    /**
+     * Whether the given user has playlist access for this group.
+     * @param {string} userId The id of the user.
+     * @returns {boolean} _true_ if the user has playlist access, _false_ otherwise.
+     */
+    hasUserPlaylistAccess(userId) {
+        if (this.groupInfo && this.groupInfo.AccessList && this.groupInfo.AccessList[userId]) {
+            return this.groupInfo.AccessList[userId].PlaylistAccess;
+        } else {
+            return false;
+        }
+    }
+
+    /**
+     * Whether the current user has playlist access for this group.
+     * @returns {boolean} _true_ if the user has playlist access, _false_ otherwise.
+     */
+    hasPlaylistAccess() {
+        const apiClient = window.connectionManager.currentApiClient();
+        const userId = this.stringToGuid(apiClient.getCurrentUserId());
+
+        return this.hasUserPlaylistAccess(userId);
+    }
+
+    /**
      * Handles a group update from the server.
      * @param {Object} cmd The group update.
      * @param {Object} apiClient The ApiClient.
@@ -75,9 +156,18 @@ class SyncPlayManager {
             case 'GroupJoined':
                 this.enableSyncPlay(apiClient, cmd.Data, true);
                 break;
+            case 'SyncPlayIsDisabled':
+                toast({
+                    text: globalize.translate('MessageSyncPlayIsDisabled')
+                });
+                break;
             case 'NotInGroup':
             case 'GroupLeft':
                 this.disableSyncPlay(true);
+                break;
+            case 'GroupUpdate':
+                cmd.Data.LastUpdatedAt = new Date(cmd.Data.LastUpdatedAt);
+                this.groupInfo = cmd.Data;
                 break;
             case 'StateUpdate':
                 events.trigger(syncPlayManager, 'group-state-update', [cmd.Data.State, cmd.Data.Reason]);

@@ -7,6 +7,8 @@ import events from 'events';
 import playbackManager from 'playbackManager';
 import * as syncPlayHelper from 'syncPlayHelper';
 import syncPlaySettings from 'syncPlaySettings';
+import toast from 'toast';
+import globalize from 'globalize';
 
 /**
  * Globals
@@ -536,6 +538,13 @@ class SyncPlayPlaybackCore {
      * Overrides PlaybackManager's unpause method.
      */
     unpauseRequest(player) {
+        if (!syncPlayManager.hasPlaybackAccess()) {
+            toast({
+                text: globalize.translate('MessageSyncPlayMissingPlaybackAccess')
+            });
+            return;
+        }
+
         const apiClient = window.connectionManager.currentApiClient();
         apiClient.requestSyncPlayUnpause();
     }
@@ -544,6 +553,13 @@ class SyncPlayPlaybackCore {
      * Overrides PlaybackManager's pause method.
      */
     pauseRequest(player) {
+        if (!syncPlayManager.hasPlaybackAccess()) {
+            toast({
+                text: globalize.translate('MessageSyncPlayMissingPlaybackAccess')
+            });
+            return;
+        }
+
         const apiClient = window.connectionManager.currentApiClient();
         apiClient.requestSyncPlayPause();
         // Pause locally as well, to give the user some little control
@@ -554,6 +570,13 @@ class SyncPlayPlaybackCore {
      * Overrides PlaybackManager's seek method.
      */
     seekRequest(PositionTicks, player) {
+        if (!syncPlayManager.hasPlaybackAccess()) {
+            toast({
+                text: globalize.translate('MessageSyncPlayMissingPlaybackAccess')
+            });
+            return;
+        }
+
         const apiClient = window.connectionManager.currentApiClient();
         apiClient.requestSyncPlaySeek({
             PositionTicks: PositionTicks

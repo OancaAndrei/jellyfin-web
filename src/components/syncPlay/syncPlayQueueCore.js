@@ -3,8 +3,6 @@
  * @module components/syncPlay/syncPlayQueueCore
  */
 
-// self\..* = function \(
-
 import events from 'events';
 import playbackManager from 'playbackManager';
 import * as syncPlayHelper from 'syncPlayHelper';
@@ -246,7 +244,13 @@ class SyncPlayQueueCore {
      * Overrides PlaybackManager's play method.
      */
     playRequest(options) {
-        // TODO: implement access list to queue control
+        if (!syncPlayManager.hasPlaylistAccess()) {
+            toast({
+                text: globalize.translate('MessageSyncPlayMissingPlaylistAccess')
+            });
+            return;
+        }
+
         const apiClient = window.connectionManager.currentApiClient();
         const sendPlayRequest = (items) => {
             const queue = items.map(item => item.Id);
@@ -276,7 +280,13 @@ class SyncPlayQueueCore {
      * Overrides PlaybackManager's setCurrentPlaylistItem method.
      */
     setCurrentPlaylistItemRequest(playlistItemId, player) {
-        // TODO: implement access list to queue control
+        if (!syncPlayManager.hasPlaybackAccess()) {
+            toast({
+                text: globalize.translate('MessageSyncPlayMissingPlaybackAccess')
+            });
+            return;
+        }
+
         const apiClient = window.connectionManager.currentApiClient();
         apiClient.requestSyncPlaySetPlaylistItem({
             PlaylistItemId: playlistItemId
@@ -287,7 +297,13 @@ class SyncPlayQueueCore {
      * Overrides PlaybackManager's removeFromPlaylist method.
      */
     removeFromPlaylistRequest(playlistItemIds, player) {
-        // TODO: implement access list to queue control
+        if (!syncPlayManager.hasPlaylistAccess()) {
+            toast({
+                text: globalize.translate('MessageSyncPlayMissingPlaylistAccess')
+            });
+            return;
+        }
+
         const apiClient = window.connectionManager.currentApiClient();
         apiClient.requestSyncPlayRemoveFromPlaylist({
             PlaylistItemIds: playlistItemIds
@@ -298,7 +314,13 @@ class SyncPlayQueueCore {
      * Overrides PlaybackManager's movePlaylistItem method.
      */
     movePlaylistItemRequest(playlistItemId, newIndex, player) {
-        // TODO: implement access list to queue control
+        if (!syncPlayManager.hasPlaylistAccess()) {
+            toast({
+                text: globalize.translate('MessageSyncPlayMissingPlaylistAccess')
+            });
+            return;
+        }
+
         const apiClient = window.connectionManager.currentApiClient();
         apiClient.requestSyncPlayMovePlaylistItem({
             PlaylistItemId: playlistItemId,
@@ -310,7 +332,13 @@ class SyncPlayQueueCore {
      * Internal method used to emulate PlaybackManager's queue method.
      */
     genericQueueRequest(options, player, mode) {
-        // TODO: implement access list to queue control
+        if (!syncPlayManager.hasPlaylistAccess()) {
+            toast({
+                text: globalize.translate('MessageSyncPlayMissingPlaylistAccess')
+            });
+            return;
+        }
+
         const apiClient = window.connectionManager.currentApiClient();
         if (options.items) {
             playbackManager.translateItemsForPlayback(options.items, options).then((items) => {
@@ -357,6 +385,13 @@ class SyncPlayQueueCore {
      * Overrides PlaybackManager's nextTrack method.
      */
     nextTrackRequest(player) {
+        if (!syncPlayManager.hasPlaybackAccess()) {
+            toast({
+                text: globalize.translate('MessageSyncPlayMissingPlaybackAccess')
+            });
+            return;
+        }
+
         const apiClient = window.connectionManager.currentApiClient();
         apiClient.requestSyncPlayNextTrack({
             PlaylistItemId: syncPlayManager.queueCore.playQueueManager.getCurrentPlaylistItemId()
@@ -367,6 +402,13 @@ class SyncPlayQueueCore {
      * Overrides PlaybackManager's previousTrack method.
      */
     previousTrackRequest(player) {
+        if (!syncPlayManager.hasPlaybackAccess()) {
+            toast({
+                text: globalize.translate('MessageSyncPlayMissingPlaybackAccess')
+            });
+            return;
+        }
+
         const apiClient = window.connectionManager.currentApiClient();
         apiClient.requestSyncPlayPreviousTrack({
             PlaylistItemId: syncPlayManager.queueCore.playQueueManager.getCurrentPlaylistItemId()
@@ -377,6 +419,13 @@ class SyncPlayQueueCore {
      * Overrides PlaybackManager's setRepeatMode method.
      */
     setRepeatModeRequest(mode, player) {
+        if (!syncPlayManager.hasPlaylistAccess()) {
+            toast({
+                text: globalize.translate('MessageSyncPlayMissingPlaylistAccess')
+            });
+            return;
+        }
+
         const apiClient = window.connectionManager.currentApiClient();
         apiClient.requestSyncPlaySetRepeatMode({
             Mode: mode
@@ -387,6 +436,13 @@ class SyncPlayQueueCore {
      * Overrides PlaybackManager's setQueueShuffleMode method.
      */
     setQueueShuffleModeRequest(mode, player) {
+        if (!syncPlayManager.hasPlaylistAccess()) {
+            toast({
+                text: globalize.translate('MessageSyncPlayMissingPlaylistAccess')
+            });
+            return;
+        }
+
         const apiClient = window.connectionManager.currentApiClient();
         apiClient.requestSyncPlaySetShuffleMode({
             Mode: mode
@@ -397,6 +453,13 @@ class SyncPlayQueueCore {
      * Overrides PlaybackManager's toggleQueueShuffleMode method.
      */
     toggleQueueShuffleModeRequest(player) {
+        if (!syncPlayManager.hasPlaylistAccess()) {
+            toast({
+                text: globalize.translate('MessageSyncPlayMissingPlaylistAccess')
+            });
+            return;
+        }
+
         let mode = syncPlayManager.queueCore.playQueueManager.getShuffleMode();
         mode = mode === 'Sorted' ? 'Shuffle' : 'Sorted';
 

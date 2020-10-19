@@ -199,7 +199,7 @@
           "src/components/subtitlesettings/subtitleappearancehelper.js",
           "src/components/subtitlesettings/subtitlesettings.js",
           "src/components/syncPlay/settings/settings.js",
-          "src/components/syncPlay/settings/editor.js",
+          "src/components/syncPlay/settings/editor/editor.js",
           "src/components/syncPlay/groupSelectionMenu.js",
           "src/components/syncPlay/playbackPermissionManager.js",
           "src/components/syncPlay/syncPlayHelper.js",

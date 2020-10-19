@@ -633,7 +633,7 @@ function initClient() {
         define('timeSyncPeer', [componentsPath + '/syncPlay/timeSync/peer'], returnFirstDependency);
         define('timeSyncCore', [componentsPath + '/syncPlay/timeSync/core'], returnDefault);
         define('syncPlaySettings', [componentsPath + '/syncPlay/settings/settings'], returnFirstDependency);
-        define('syncPlaySettingsEditor', [componentsPath + '/syncPlay/settings/editor'], returnFirstDependency);
+        define('syncPlaySettingsEditor', [componentsPath + '/syncPlay/settings/editor/editor'], returnFirstDependency);
         define('groupSelectionMenu', [componentsPath + '/syncPlay/groupSelectionMenu'], returnFirstDependency);
         define('syncPlayHelper', [componentsPath + '/syncPlay/syncPlayHelper'], returnFirstDependency);
         define('syncPlayManager', [componentsPath + '/syncPlay/syncPlayManager'], returnDefault);

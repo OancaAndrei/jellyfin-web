@@ -31,16 +31,33 @@ class GroupSelectionMenu {
         apiClient.getSyncPlayGroups().then(function (response) {
             response.json().then(function (groups) {
                 var menuItems = groups.map(function (group) {
+                    let icon = '';
+                    if (group.Visibility === 'Private') {
+                        icon = 'person';
+                    } else if (group.Visibility === 'InviteOnly') {
+                        icon = 'cake';
+                    } else {
+                        icon = 'public';
+                    }
+
                     return {
                         name: group.GroupName,
-                        icon: 'group',
+                        icon: icon,
                         id: group.GroupId,
                         selected: false,
-                        secondaryText: group.Participants.join(', ')
+                        secondaryText: group.UserNames.join(', ')
                     };
                 });
 
                 if (policy.SyncPlayAccess === 'CreateAndJoinGroups') {
+                    menuItems.unshift({
+                        name: globalize.translate('LabelSyncPlayQuickGroup'),
+                        icon: 'person_add_alt_1',
+                        id: 'quick-private-group',
+                        selected: true,
+                        secondaryText: globalize.translate('LabelSyncPlayQuickGroupDescription')
+                    });
+
                     menuItems.push({
                         name: globalize.translate('LabelSyncPlayNewGroup'),
                         icon: 'add',
@@ -67,9 +84,14 @@ class GroupSelectionMenu {
                 };
 
                 actionsheet.show(menuOptions).then(function (id) {
-                    if (id == 'new-group') {
+                    if (id == 'quick-private-group') {
                         apiClient.createSyncPlayGroup({
-                            GroupName: globalize.translate('SyncPlayGroupDefaultTitle', user.localUser.Name)
+                            GroupName: globalize.translate('SyncPlayGroupDefaultTitle', user.localUser.Name),
+                            Visibility: 'Private'
+                        });
+                    } else if (id == 'new-group') {
+                        new SyncPlaySettingsEditor(apiClient, syncPlayManager.timeSyncCore, {
+                            groupName: globalize.translate('SyncPlayGroupDefaultTitle', user.localUser.Name)
                         });
                     } else if (id) {
                         apiClient.joinSyncPlayGroup({
@@ -151,9 +173,9 @@ class GroupSelectionMenu {
             } else if (id == 'leave-group') {
                 apiClient.leaveSyncPlayGroup();
             } else if (id == 'settings') {
-                new SyncPlaySettingsEditor(syncPlayManager.timeSyncCore, {
-                    groupId: groupInfo.GroupId,
-                    groupName: groupInfo.GroupName
+                new SyncPlaySettingsEditor(apiClient, syncPlayManager.timeSyncCore, {
+                    groupInfo: groupInfo,
+                    canEditGroup: syncPlayManager.isAdministrator()
                 });
             }
         }).catch((error) => {
