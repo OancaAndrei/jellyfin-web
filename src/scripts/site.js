@@ -199,6 +199,27 @@ function initClient() {
             promises.push(require(['fetch']));
         }
 
+        require(['events', 'playbackManager', 'syncPlayManager', 'syncPlayPlayerFactory', 'syncPlayToasts',
+            'syncPlayNoActivePlayer', 'syncPlayHtmlVideoPlayer', 'syncPlayHtmlAudioPlayer'],
+        function (events, playbackManager, syncPlayManager, playerFactory, syncPlayToasts,
+            syncPlayNoActivePlayer, syncPlayHtmlVideoPlayer, syncPlayHtmlAudioPlayer) {
+            // Import once to register singleton.
+            syncPlayToasts = syncPlayToasts.default || syncPlayToasts;
+
+            // Register player wrappers.
+            playerFactory.setDefaultWrapper(syncPlayNoActivePlayer.default);
+            playerFactory.registerWrapper(syncPlayHtmlVideoPlayer.default);
+            playerFactory.registerWrapper(syncPlayHtmlAudioPlayer.default);
+
+            // Listen for player changes.
+            events.on(playbackManager.default, 'playerchange', (event, newPlayer, newTarget, oldPlayer) => {
+                syncPlayManager.onPlayerChange(newPlayer, newTarget, oldPlayer);
+            });
+
+            // Init with default player wrapper.
+            syncPlayManager.bindToPlayer(playbackManager.default.getCurrentPlayer());
+        });
+
         Promise.all(promises).then(function () {
             createConnectionManager().then(function () {
                 console.debug('initAfterDependencies promises resolved');
@@ -636,12 +657,19 @@ function initClient() {
         define('syncPlaySettingsEditor', [componentsPath + '/syncPlay/settings/editor/editor'], returnFirstDependency);
         define('groupSelectionMenu', [componentsPath + '/syncPlay/groupSelectionMenu'], returnFirstDependency);
         define('syncPlayHelper', [componentsPath + '/syncPlay/syncPlayHelper'], returnFirstDependency);
+        define('syncPlayToasts', [componentsPath + '/syncPlay/syncPlayToasts'], returnDefault);
+        define('syncPlayController', [componentsPath + '/syncPlay/syncPlayController'], returnFirstDependency);
         define('syncPlayManager', [componentsPath + '/syncPlay/syncPlayManager'], returnDefault);
+        define('syncPlayGenericPlayer', [componentsPath + '/syncPlay/players/genericPlayer'], returnFirstDependency);
+        define('syncPlayQueueManager', [componentsPath + '/syncPlay/players/queueManager'], returnFirstDependency);
+        define('syncPlayNoActivePlayer', [componentsPath + '/syncPlay/players/noActivePlayer'], returnFirstDependency);
+        define('syncPlayHtmlVideoPlayer', [componentsPath + '/syncPlay/players/htmlVideoPlayer'], returnFirstDependency);
+        define('syncPlayHtmlAudioPlayer', [componentsPath + '/syncPlay/players/htmlAudioPlayer'], returnFirstDependency);
+        define('syncPlayPlayerFactory', [componentsPath + '/syncPlay/players/factory'], returnDefault);
         define('syncPlayPlaybackCore', [componentsPath + '/syncPlay/syncPlayPlaybackCore'], returnFirstDependency);
         define('syncPlayQueueCore', [componentsPath + '/syncPlay/syncPlayQueueCore'], returnFirstDependency);
         define('syncPlayWebRTCCore', [componentsPath + '/syncPlay/webRTC/core'], returnFirstDependency);
         define('syncPlayWebRTCPeer', [componentsPath + '/syncPlay/webRTC/peer'], returnFirstDependency);
-        define('syncPlayQueueManager', [componentsPath + '/syncPlay/syncPlayQueueManager'], returnFirstDependency);
         define('playbackPermissionManager', [componentsPath + '/syncPlay/playbackPermissionManager'], returnDefault);
         define('layoutManager', [componentsPath + '/layoutManager', 'apphost'], getLayoutManager);
         define('homeSections', [componentsPath + '/homesections/homesections'], returnFirstDependency);

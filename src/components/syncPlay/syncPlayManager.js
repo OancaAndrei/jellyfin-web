@@ -4,44 +4,109 @@
  */
 
 import events from 'events';
-import playbackManager from 'playbackManager';
 import * as syncPlayHelper from 'syncPlayHelper';
 import syncPlaySettings from 'syncPlaySettings';
+import syncPlayPlayerFactory from 'syncPlayPlayerFactory';
 import TimeSyncCore from 'timeSyncCore';
+import SyncPlayController from 'syncPlayController';
 import SyncPlayWebRTCCore from 'syncPlayWebRTCCore';
 import SyncPlayPlaybackCore from 'syncPlayPlaybackCore';
 import SyncPlayQueueCore from 'syncPlayQueueCore';
-import toast from 'toast';
-import globalize from 'globalize';
 
 /**
  * Class that manages the SyncPlay feature.
  */
 class SyncPlayManager {
     constructor() {
-        this.webRTCCore = new SyncPlayWebRTCCore(this);
-        this.timeSyncCore = new TimeSyncCore(this.webRTCCore);
-        this.playbackCore = new SyncPlayPlaybackCore(this);
-        this.queueCore = new SyncPlayQueueCore(this);
+        this.webRTCCore = new SyncPlayWebRTCCore();
+        this.timeSyncCore = new TimeSyncCore();
+        this.playbackCore = new SyncPlayPlaybackCore();
+        this.queueCore = new SyncPlayQueueCore();
+        this.controller = new SyncPlayController();
 
-        this.syncMethod = 'None'; // used for stats
+        this.syncMethod = 'None'; // Used for stats.
 
         this.groupInfo = null;
-        this.syncPlayEnabledAt = null; // Server time of when SyncPlay has been enabled
-        this.syncPlayReady = false; // SyncPlay is ready after first ping to server
-        this.queuedCommand = null; // Queued playback command, applied when SyncPlay is ready
-        this.followingGroupPlayback = true; // Follow or ignore group playback
-        this.lastPlaybackCommand = null; // Last received playback command from server, tracks state of group
+        this.syncPlayEnabledAt = null; // Server time of when SyncPlay has been enabled.
+        this.syncPlayReady = false; // SyncPlay is ready after first ping to server.
+        this.queuedCommand = null; // Queued playback command, applied when SyncPlay is ready.
+        this.followingGroupPlayback = true; // Follow or ignore group playback.
+        this.lastPlaybackCommand = null; // Last received playback command from server, tracks state of group.
+
+        this.currentPlayer = null;
+        this.playerWrapper = syncPlayPlayerFactory.getDefaultWrapper(this);
+
+        // Initialize components.
+        this.webRTCCore.init(this);
+        this.timeSyncCore.init(this);
+        this.playbackCore.init(this);
+        this.queueCore.init(this);
+        this.controller.init(this);
 
         events.on(this.timeSyncCore, 'time-sync-server-update', (event, timeOffset, ping) => {
-            // Report ping
+            // Report ping back to server.
             if (this.syncEnabled) {
-                const apiClient = window.connectionManager.currentApiClient();
-                apiClient.sendSyncPlayPing({
+                this.getApiClient().sendSyncPlayPing({
                     Ping: ping
                 });
             }
         });
+    }
+
+    /**
+     * Gets the WebRTC core.
+     * @returns {SyncPlayWebRTCCore} The WebRTC core.
+     */
+    getWebRTCCore() {
+        return this.webRTCCore;
+    }
+
+    /**
+     * Gets the time sync core.
+     * @returns {TimeSyncCore} The time sync core.
+     */
+    getTimeSyncCore() {
+        return this.timeSyncCore;
+    }
+
+    /**
+     * Gets the playback core.
+     * @returns {SyncPlayPlaybackCore} The playback core.
+     */
+    getPlaybackCore() {
+        return this.playbackCore;
+    }
+
+    /**
+     * Gets the queue core.
+     * @returns {SyncPlayQueueCore} The queue core.
+     */
+    getQueueCore() {
+        return this.queueCore;
+    }
+
+    /**
+     * Gets the controller used to manage SyncPlay playback.
+     * @returns {SyncPlayController} The controller.
+     */
+    getController() {
+        return this.controller;
+    }
+
+    /**
+     * Gets the player wrapper used to control local playback.
+     * @returns {SyncPlayGenericPlayer} The player wrapper.
+     */
+    getPlayerWrapper() {
+        return this.playerWrapper;
+    }
+
+    /**
+     * Gets the ApiClient used to communicate with the server.
+     * @returns {Object} The ApiClient.
+     */
+    getApiClient() {
+        return window.connectionManager.currentApiClient();
     }
 
     /**
@@ -53,12 +118,48 @@ class SyncPlayManager {
     }
 
     /**
-     * Converts a given string to a Guid string.
-     * @param {string} input The input string.
-     * @returns {string} The Guid string.
+     * Called when the player changes.
      */
-    stringToGuid(input) {
-        return input.replace(/([0-z]{8})([0-z]{4})([0-z]{4})([0-z]{4})([0-z]{12})/, '$1-$2-$3-$4-$5');
+    onPlayerChange(newPlayer, newTarget, oldPlayer) {
+        this.bindToPlayer(newPlayer);
+    }
+
+    /**
+     * Binds to the player's events.
+     * @param {Object} player The player.
+     */
+    bindToPlayer(player) {
+        this.releaseCurrentPlayer();
+
+        if (!player) {
+            return;
+        }
+
+        this.playerWrapper.unbindFromPlayer();
+
+        this.currentPlayer = player;
+        this.playerWrapper = syncPlayPlayerFactory.getWrapper(player, this);
+
+        if (this.isSyncPlayEnabled()) {
+            this.playerWrapper.bindToPlayer();
+        }
+
+        events.trigger(this, 'playerchange', [this.currentPlayer]);
+    }
+
+    /**
+     * Removes the bindings from the current player's events.
+     */
+    releaseCurrentPlayer() {
+        this.currentPlayer = null;
+        this.playerWrapper.unbindFromPlayer();
+
+        this.playerWrapper = syncPlayPlayerFactory.getDefaultWrapper(this);
+        if (this.isSyncPlayEnabled()) {
+            this.playerWrapper.bindToPlayer();
+        }
+
+        events.trigger(this, 'playerchange', [this.currentPlayer]);
     }
 
     /**
@@ -79,8 +180,8 @@ class SyncPlayManager {
      * @returns {boolean} _true_ if the user is an administrator, _false_ otherwise.
      */
     isAdministrator() {
-        const apiClient = window.connectionManager.currentApiClient();
-        const userId = this.stringToGuid(apiClient.getCurrentUserId());
+        const apiClient = this.getApiClient();
+        const userId = syncPlayHelper.stringToGuid(apiClient.getCurrentUserId());
 
         return this.isUserAdministrator(userId);
     }
@@ -103,8 +204,8 @@ class SyncPlayManager {
      * @returns {boolean} _true_ if the user has playback access, _false_ otherwise.
      */
     hasPlaybackAccess() {
-        const apiClient = window.connectionManager.currentApiClient();
-        const userId = this.stringToGuid(apiClient.getCurrentUserId());
+        const apiClient = this.getApiClient();
+        const userId = syncPlayHelper.stringToGuid(apiClient.getCurrentUserId());
 
         return this.hasUserPlaybackAccess(userId);
     }
@@ -127,8 +228,8 @@ class SyncPlayManager {
      * @returns {boolean} _true_ if the user has playlist access, _false_ otherwise.
      */
     hasPlaylistAccess() {
-        const apiClient = window.connectionManager.currentApiClient();
-        const userId = this.stringToGuid(apiClient.getCurrentUserId());
+        const apiClient = this.getApiClient();
+        const userId = syncPlayHelper.stringToGuid(apiClient.getCurrentUserId());
 
         return this.hasUserPlaylistAccess(userId);
     }
@@ -144,22 +245,17 @@ class SyncPlayManager {
                 this.queueCore.updatePlayQueue(apiClient, cmd.Data);
                 break;
             case 'UserJoined':
-                toast({
-                    text: globalize.translate('MessageSyncPlayUserJoined', cmd.Data)
-                });
+                syncPlayHelper.showMessage(this, 'MessageSyncPlayUserJoined', [cmd.Data]);
                 break;
             case 'UserLeft':
-                toast({
-                    text: globalize.translate('MessageSyncPlayUserLeft', cmd.Data)
-                });
+                syncPlayHelper.showMessage(this, 'MessageSyncPlayUserLeft', [cmd.Data]);
                 break;
             case 'GroupJoined':
+                cmd.Data.LastUpdatedAt = new Date(cmd.Data.LastUpdatedAt);
                 this.enableSyncPlay(apiClient, cmd.Data, true);
                 break;
             case 'SyncPlayIsDisabled':
-                toast({
-                    text: globalize.translate('MessageSyncPlayIsDisabled')
-                });
+                syncPlayHelper.showMessage(this, 'MessageSyncPlayIsDisabled');
                 break;
             case 'NotInGroup':
             case 'GroupLeft':
@@ -171,33 +267,25 @@ class SyncPlayManager {
                 break;
             case 'StateUpdate':
                 events.trigger(syncPlayManager, 'group-state-update', [cmd.Data.State, cmd.Data.Reason]);
-                console.debug('SyncPlay processGroupUpdate: StateUpdate', cmd.Data.State, cmd.Data.Reason);
+                console.debug(`SyncPlay processGroupUpdate: state changed to ${cmd.Data.State} because ${cmd.Data.Reason}.`);
                 break;
             case 'GroupDoesNotExist':
-                toast({
-                    text: globalize.translate('MessageSyncPlayGroupDoesNotExist')
-                });
+                syncPlayHelper.showMessage(this, 'MessageSyncPlayGroupDoesNotExist');
                 break;
             case 'CreateGroupDenied':
-                toast({
-                    text: globalize.translate('MessageSyncPlayCreateGroupDenied')
-                });
+                syncPlayHelper.showMessage(this, 'MessageSyncPlayCreateGroupDenied');
                 break;
             case 'JoinGroupDenied':
-                toast({
-                    text: globalize.translate('MessageSyncPlayJoinGroupDenied')
-                });
+                syncPlayHelper.showMessage(this, 'MessageSyncPlayJoinGroupDenied');
                 break;
             case 'LibraryAccessDenied':
-                toast({
-                    text: globalize.translate('MessageSyncPlayLibraryAccessDenied')
-                });
+                syncPlayHelper.showMessage(this, 'MessageSyncPlayLibraryAccessDenied');
                 break;
             case 'WebRTC':
                 this.webRTCCore.handleSignalingMessage(apiClient, cmd.Data);
                 break;
             default:
-                console.error('processSyncPlayGroupUpdate: command is not recognised: ' + cmd.Type);
+                console.error(`SyncPlay processGroupUpdate: command ${cmd.Type} not recognised.`);
                 break;
         }
     }
@@ -217,17 +305,17 @@ class SyncPlayManager {
         }
 
         if (!this.isSyncPlayEnabled()) {
-            console.debug('SyncPlay processCommand: SyncPlay not enabled, ignoring command', cmd);
+            console.debug('SyncPlay processCommand: SyncPlay not enabled, ignoring command.', cmd);
             return;
         }
 
         if (cmd.EmittedAt.getTime() < this.syncPlayEnabledAt.getTime()) {
-            console.debug('SyncPlay processCommand: ignoring old command', cmd);
+            console.debug('SyncPlay processCommand: ignoring old command.', cmd);
             return;
         }
 
         if (!this.syncPlayReady) {
-            console.debug('SyncPlay processCommand: SyncPlay not ready, queued command', cmd);
+            console.debug('SyncPlay processCommand: SyncPlay not ready, queued command.', cmd);
             this.queuedCommand = cmd;
             return;
         }
@@ -241,16 +329,12 @@ class SyncPlayManager {
 
         // Make sure command matches playing item in playlist
         const playlistItemId = this.queueCore.getCurrentPlaylistItemId();
-        if (cmd.PlaylistItemId !== playlistItemId) {
-            console.warn('SyncPlay processCommand: playlist item does not match!', cmd);
+        if (cmd.PlaylistItemId !== playlistItemId && cmd.Command !== 'Stop') {
+            console.error('SyncPlay processCommand: playlist item does not match!', cmd);
             return;
         }
 
-        if (cmd.PositionTicks) {
-            console.log('SyncPlay will', cmd.Command, 'at', cmd.When, '(in', cmd.When.getTime() - Date.now(), 'ms)', 'PositionTicks', cmd.PositionTicks);
-        } else {
-            console.log('SyncPlay will', cmd.Command, 'at', cmd.When, '(in', cmd.When.getTime() - Date.now(), 'ms)');
-        }
+        console.log(`SyncPlay will ${cmd.Command} at ${cmd.When} (in ${cmd.When.getTime() - Date.now()} ms)${cmd.PositionTicks ? '' : ' from ' + cmd.PositionTicks}.`);
 
         this.playbackCore.applyCommand(cmd);
     }
@@ -264,7 +348,7 @@ class SyncPlayManager {
         if (update === null || update.State === null || update.Reason === null) return;
 
         if (!this.isSyncPlayEnabled()) {
-            console.debug('SyncPlay processStateChange: SyncPlay not enabled, ignoring group state update', update);
+            console.debug('SyncPlay processStateChange: SyncPlay not enabled, ignoring group state update.', update);
             return;
         }
 
@@ -322,12 +406,23 @@ class SyncPlayManager {
      * @param {boolean} showMessage Display message.
      */
     enableSyncPlay(apiClient, groupInfo, showMessage = false) {
-        // Convert string to date
-        groupInfo.LastUpdatedAt = new Date(groupInfo.LastUpdatedAt);
+        if (this.isSyncPlayEnabled()) {
+            if (groupInfo.GroupId === this.groupInfo.GroupId) {
+                console.debug(`SyncPlay enableSyncPlay: group ${this.groupInfo.GroupId} already joined.`);
+                return;
+            } else {
+                console.warn(`SyncPlay enableSyncPlay: switching from group ${this.groupInfo.GroupId} to group ${groupInfo.GroupId}.`);
+                this.disableSyncPlay(false);
+            }
+
+            showMessage = false;
+        }
+
         this.groupInfo = groupInfo;
 
         this.syncPlayEnabledAt = groupInfo.LastUpdatedAt;
-        this.injectPlaybackManager();
+        this.playerWrapper.bindToPlayer();
+
         events.trigger(this, 'enabled', [true]);
 
         // Wait for time sync to be ready
@@ -348,9 +443,7 @@ class SyncPlayManager {
         }
 
         if (showMessage) {
-            toast({
-                text: globalize.translate('MessageSyncPlayEnabled')
-            });
+            syncPlayHelper.showMessage(this, 'MessageSyncPlayEnabled');
         }
     }
 
@@ -366,14 +459,12 @@ class SyncPlayManager {
         this.queuedCommand = null;
         this.playbackCore.syncEnabled = false;
         events.trigger(this, 'enabled', [false]);
-        this.restorePlaybackManager();
+        this.playerWrapper.unbindFromPlayer();
 
         this.webRTCCore.disable();
 
         if (showMessage) {
-            toast({
-                text: globalize.translate('MessageSyncPlayDisabled')
-            });
+            syncPlayHelper.showMessage(this, 'MessageSyncPlayDisabled');
         }
     }
 
@@ -383,33 +474,6 @@ class SyncPlayManager {
      */
     isSyncPlayEnabled() {
         return this.syncPlayEnabledAt !== null;
-    }
-
-    /**
-     * Overrides some PlaybackManager's methods to intercept playback commands.
-     */
-    injectPlaybackManager() {
-        if (!this.isSyncPlayEnabled()) return;
-        if (playbackManager.syncPlayEnabled) return;
-
-        // TODO: make this less hacky
-        this.playbackCore.injectPlaybackManager();
-        this.queueCore.injectPlaybackManager();
-
-        playbackManager.syncPlayEnabled = true;
-    }
-
-    /**
-     * Restores original PlaybackManager's methods.
-     */
-    restorePlaybackManager() {
-        if (this.isSyncPlayEnabled()) return;
-        if (!playbackManager.syncPlayEnabled) return;
-
-        this.playbackCore.restorePlaybackManager();
-        this.queueCore.restorePlaybackManager();
-
-        playbackManager.syncPlayEnabled = false;
     }
 
     /**
@@ -426,7 +490,8 @@ class SyncPlayManager {
      */
     getStats() {
         return {
-            TimeOffset: this.timeSyncCore.getTimeOffset().toFixed(2),
+            TimeSyncDevice: this.timeSyncCore.getActiveDeviceName(),
+            TimeSyncOffset: this.timeSyncCore.getTimeOffset().toFixed(2),
             PlaybackDiff: this.playbackCore.playbackDiffMillis.toFixed(2),
             SyncMethod: this.syncMethod
         };
@@ -437,7 +502,15 @@ class SyncPlayManager {
      * @returns {boolean} Whether a player is active.
      */
     isPlaybackActive() {
-        return this.playbackCore.isPlaybackActive();
+        return this.playerWrapper.isPlaybackActive();
+    }
+
+    /**
+     * Whether the player is remotely self-managed.
+     * @returns {boolean} _true_ if the player is remotely self-managed, _false_ otherwise.
+     */
+    isRemote() {
+        return this.playerWrapper.isRemote();
     }
 
     /**
@@ -446,6 +519,18 @@ class SyncPlayManager {
      */
     isPlaylistEmpty() {
         return this.queueCore.isPlaylistEmpty();
+    }
+
+    /**
+     * Checks if playback is unpaused.
+     * @returns {boolean} _true_ if media is playing, _false_ otherwise.
+     */
+    isPlaying() {
+        if (!this.lastPlaybackCommand) {
+            return false;
+        } else {
+            return this.lastPlaybackCommand.Command === 'Unpause';
+        }
     }
 
     /**

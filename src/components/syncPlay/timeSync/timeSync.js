@@ -57,7 +57,8 @@ class Measurement {
  * Class that manages time syncing with remote entity.
  */
 class TimeSync {
-    constructor() {
+    constructor(syncPlayManager) {
+        this.manager = syncPlayManager;
         this.pingStop = true;
         this.pollingInterval = PollingIntervalGreedy;
         this.poller = null;

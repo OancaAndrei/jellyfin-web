@@ -9,9 +9,9 @@ import TimeSync from 'timeSync';
  * Class that manages time syncing with a peer.
  */
 class TimeSyncPeer extends TimeSync {
-    constructor(webRTCCore, peerId) {
-        super();
-        this.webRTCCore = webRTCCore;
+    constructor(syncPlayManager, peerId) {
+        super(syncPlayManager);
+        this.webRTCCore = syncPlayManager.getWebRTCCore();
         this.peerId = peerId;
         this.peerTimeOffset = 0; // peer's time offset with server
         this.peerPing = 0; // peer's ping with server

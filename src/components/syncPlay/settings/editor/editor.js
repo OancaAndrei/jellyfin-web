@@ -7,6 +7,7 @@ import events from 'events';
 import dialogHelper from 'dialogHelper';
 import loading from 'loading';
 import layoutManager from 'layoutManager';
+import * as syncPlayHelper from 'syncPlayHelper';
 import syncPlaySettings from 'syncPlaySettings';
 import toast from 'toast';
 import globalize from 'globalize';
@@ -374,16 +375,12 @@ class SyncPlaySettingsEditor {
     }
 
     /**
-     * Converts a given string to a Guid string.
-     * @param {string} input The input string.
-     * @returns {string} The Guid string.
+     * Whether the given user is the one currently logged in.
+     * @param {string} userId The id of the user.
+     * @returns {boolean} _true_ if the user is the one currently logged in, _false_ otherwise.
      */
-    stringToGuid(input) {
-        return input.replace(/([0-z]{8})([0-z]{4})([0-z]{4})([0-z]{4})([0-z]{12})/, '$1-$2-$3-$4-$5');
-    }
-
     isCurrentUser(userId) {
-        const currentUserId = this.stringToGuid(this.apiClient.getCurrentUserId());
+        const currentUserId = syncPlayHelper.stringToGuid(this.apiClient.getCurrentUserId());
         return userId === currentUserId;
     }
 

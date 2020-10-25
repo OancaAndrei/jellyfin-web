@@ -9,10 +9,19 @@ import SyncPlayWebRTCPeer from 'syncPlayWebRTCPeer';
 
 class SyncPlayWebRTCCore {
     constructor() {
+        this.manager = null;
         this.connections = {};
         this.connectionsArray = [];
         this.peerIds = [];
         this.enabled = false;
+    }
+
+    /**
+     * Initializes the core.
+     * @param {SyncPlayManager} syncPlayManager The SyncPlay manager.
+     */
+    init(syncPlayManager) {
+        this.manager = syncPlayManager;
 
         // Update WebRTC status based on user preferences
         events.on(syncPlaySettings, 'enableWebRTC', (event, value, oldValue) => {
@@ -33,7 +42,7 @@ class SyncPlayWebRTCCore {
         }
 
         this.enabled = true;
-        const apiClient = window.connectionManager.currentApiClient();
+        const apiClient = this.manager.getApiClient();
         apiClient.requestSyncPlayWebRTC({
             NewSession: true
         });
@@ -59,7 +68,7 @@ class SyncPlayWebRTCCore {
         this.enabled = false;
 
         if (notifyServer) {
-            const apiClient = window.connectionManager.currentApiClient();
+            const apiClient = this.manager.getApiClient();
             apiClient.requestSyncPlayWebRTC({
                 SessionLeaving: true
             });
@@ -86,7 +95,7 @@ class SyncPlayWebRTCCore {
             this.removeConnection(userId);
         }
 
-        const connection = new SyncPlayWebRTCPeer(this, userId, isHost);
+        const connection = new SyncPlayWebRTCPeer(this.manager, userId, isHost);
         this.connections[userId] = connection;
         this.connectionsArray.push(userId);
         await connection.open();
@@ -134,7 +143,7 @@ class SyncPlayWebRTCCore {
      * @param {Object} message The message.
      */
     _sendMessage(peerId, message) {
-        let connection = this.getConnectionByUserId(peerId);
+        const connection = this.getConnectionByUserId(peerId);
         if (!connection) {
             console.error(`SyncPlay WebRTC sendMessage: no connection found for peer ${peerId}.`);
             return;

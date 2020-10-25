@@ -9,15 +9,15 @@ import TimeSync from 'timeSync';
  * Class that manages time syncing with server.
  */
 class TimeSyncServer extends TimeSync {
-    constructor() {
-        super();
+    constructor(syncPlayManager) {
+        super(syncPlayManager);
     }
 
     /**
      * Makes a ping request to the server.
      */
     requestPing() {
-        const apiClient = window.connectionManager.currentApiClient();
+        const apiClient = this.manager.getApiClient();
         const requestSent = new Date();
         let responseReceived;
         return apiClient.getServerTime().then((response) => {

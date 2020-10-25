@@ -3,12 +3,13 @@
  * @module components/syncPlay/webRTC/peer
  */
 
- /**
+/**
  * Class that manages a single WebRTC connection.
  */
 class SyncPlayWebRTCPeer {
-    constructor(webRTCCore, sessionId, isHost = false) {
-        this.webRTCCore = webRTCCore;
+    constructor(syncPlayManager, sessionId, isHost = false) {
+        this.manager = syncPlayManager;
+        this.webRTCCore = syncPlayManager.getWebRTCCore();
         this.sessionId = sessionId;
         this.isHost = isHost;
         this.peerConnection = null;
@@ -41,7 +42,7 @@ class SyncPlayWebRTCPeer {
     initPeerConnection() {
         this.close();
 
-        const apiClient = window.connectionManager.currentApiClient();
+        const apiClient = this.manager.getApiClient();
 
         const configuration = {
             iceServers: []
@@ -118,7 +119,7 @@ class SyncPlayWebRTCPeer {
         const offer = await this.peerConnection.createOffer();
         await this.peerConnection.setLocalDescription(offer);
 
-        const apiClient = window.connectionManager.currentApiClient();
+        const apiClient = this.manager.getApiClient();
         apiClient.requestSyncPlayWebRTC({
             To: this.sessionId,
             Offer: JSON.stringify(offer)
@@ -132,7 +133,7 @@ class SyncPlayWebRTCPeer {
         const answer = await this.peerConnection.createAnswer();
         await this.peerConnection.setLocalDescription(answer);
 
-        const apiClient = window.connectionManager.currentApiClient();
+        const apiClient = this.manager.getApiClient();
         apiClient.requestSyncPlayWebRTC({
             To: this.sessionId,
             Answer: JSON.stringify(answer)

@@ -4,235 +4,127 @@
  */
 
 import events from 'events';
-import playbackManager from 'playbackManager';
 import * as syncPlayHelper from 'syncPlayHelper';
 import syncPlaySettings from 'syncPlaySettings';
-import toast from 'toast';
-import globalize from 'globalize';
-
-/**
- * Globals
- */
-var syncPlayManager;
 
 /**
  * Class that manages the playback of SyncPlay.
  */
 class SyncPlayPlaybackCore {
-    constructor(_syncPlayManager) {
-        // FIXME: kinda ugly but does its job (it avoids circular dependencies)
-        syncPlayManager = _syncPlayManager;
-        this.timeSyncCore = syncPlayManager.timeSyncCore;
+    constructor() {
+        this.manager = null;
+        this.timeSyncCore = null;
 
-        this.playbackRateSupported = false;
         this.syncEnabled = false;
-        this.playbackDiffMillis = 0; // used for stats
+        this.playbackDiffMillis = 0; // Used for stats and remote time sync.
         this.syncAttempts = 0;
         this.lastSyncTime = new Date();
-        this.syncWatcherTimeout = null; // interval that watches playback time and syncs it
-        this.syncLevel = 1; // Multiplier for default values, 1 being the most demanding one
-        this.enableSyncCorrection = true; // user setting to disable sync during playback
+        this.enableSyncCorrection = true; // User setting to disable sync during playback.
 
-        this.lastPlaybackWaiting = null; // used to determine if player's buffering
-        this.minBufferingThresholdMillis = 1000;
+        this.playerIsBuffering = false;
 
-        this.currentPlayer = null;
-        this.localPlayerPlaybackRate = 1.0; // used to restore user PlaybackRate
-
-        this.lastCommand = null; // Last scheduled playback command, might not be the latest one
+        this.lastCommand = null; // Last scheduled playback command, might not be the latest one.
         this.scheduledCommandTimeout = null;
         this.syncTimeout = null;
 
         this.loadPreferences();
+    }
 
-        events.on(playbackManager, 'playbackstart', (player, state) => {
-            this.onPlaybackStart(player, state);
-        });
-
-        events.on(playbackManager, 'playbackstop', (stopInfo) => {
-            this.onPlaybackStop(stopInfo);
-        });
-
-        events.on(playbackManager, 'playerchange', () => {
-            this.onPlayerChange();
-        });
-
-        this.bindToPlayer(playbackManager.getCurrentPlayer());
+    /**
+     * Initializes the core.
+     * @param {SyncPlayManager} syncPlayManager The SyncPlay manager.
+     */
+    init(syncPlayManager) {
+        this.manager = syncPlayManager;
+        this.timeSyncCore = syncPlayManager.timeSyncCore;
 
         events.on(syncPlaySettings, 'update', (event) => {
             this.loadPreferences();
         });
     }
 
+    /**
+     * Loads preferences from saved settings.
+     */
     loadPreferences() {
-        // Minimum required delay for SpeedToSync to kick in, in milliseconds
+        // Minimum required delay for SpeedToSync to kick in, in milliseconds.
         this.minDelaySpeedToSync = syncPlaySettings.getFloat('minDelaySpeedToSync', 60.0);
-        // Maximum delay after which SkipToSync is used instead of SpeedToSync, in milliseconds
+
+        // Maximum delay after which SkipToSync is used instead of SpeedToSync, in milliseconds.
         this.maxDelaySpeedToSync = syncPlaySettings.getFloat('maxDelaySpeedToSync', 3000.0);
-        // Time during which the playback is sped up, in milliseconds
+
+        // Time during which the playback is sped up, in milliseconds.
         this.speedToSyncDuration = syncPlaySettings.getFloat('speedToSyncDuration', 1000.0);
-        // Minimum required delay for SkipToSync to kick in, in milliseconds
+
+        // Minimum required delay for SkipToSync to kick in, in milliseconds.
         this.minDelaySkipToSync = syncPlaySettings.getFloat('minDelaySkipToSync', 400.0);
-        // Whether SpeedToSync should be used
+
+        // Whether SpeedToSync should be used.
         this.useSpeedToSync = syncPlaySettings.getBool('useSpeedToSync');
-        // Whether SkipToSync should be used
+
+        // Whether SkipToSync should be used.
         this.useSkipToSync = syncPlaySettings.getBool('useSkipToSync');
-        // Whether sync correction during playback is active
+
+        // Whether sync correction during playback is active.
         this.enableSyncCorrection = syncPlaySettings.getBool('enableSyncCorrection');
     }
 
     /**
-     * Called when playback starts.
+     * Called by player wrapper when playback starts.
      */
     onPlaybackStart(player, state) {
-        events.trigger(syncPlayManager, 'playbackstart', [player, state]);
+        events.trigger(this.manager, 'playbackstart', [player, state]);
     }
 
     /**
-     * Called when playback stops.
+     * Called by player wrapper when playback stops.
      */
     onPlaybackStop(stopInfo) {
         this.lastCommand = null;
-        events.trigger(syncPlayManager, 'playbackstop', [stopInfo]);
+        events.trigger(this.manager, 'playbackstop', [stopInfo]);
+        this.manager.releaseCurrentPlayer();
     }
 
     /**
-     * Called when the player changes.
+     * Called by player wrapper when playback unpauses.
      */
-    onPlayerChange() {
-        this.bindToPlayer(playbackManager.getCurrentPlayer());
-        events.trigger(syncPlayManager, 'playerchange', [this.currentPlayer]);
+    onUnpause() {
+        events.trigger(this.manager, 'unpause');
     }
 
     /**
-     * Called when playback unpauses.
+     * Called by player wrapper when playback pauses.
      */
-    onPlayerUnpause() {
-        events.trigger(syncPlayManager, 'unpause', [this.currentPlayer]);
+    onPause() {
+        events.trigger(this.manager, 'pause');
     }
 
     /**
-     * Called when playback pauses.
-     */
-    onPlayerPause() {
-        events.trigger(syncPlayManager, 'pause', [this.currentPlayer]);
-    }
-
-    /**
-     * Called on playback progress.
+     * Called by player wrapper on playback progress.
      * @param {Object} event The time update event.
+     * @param {Object} timeUpdateData The time update data.
      */
-    onTimeUpdate(event) {
-        // NOTICE: this event is unreliable, at least in Safari
-        // which just stops firing the event after a while.
-        events.trigger(syncPlayManager, 'timeupdate', [event]);
+    onTimeUpdate(event, timeUpdateData) {
+        this.syncPlaybackTime(timeUpdateData);
+        events.trigger(this.manager, 'timeupdate', [event, timeUpdateData]);
     }
 
     /**
-     * Called when playback is resumed.
+     * Called by player wrapper when player is ready to play.
      */
-    onPlaying() {
-        if (this.isBuffering()) {
-            this.sendBufferingRequest(false);
-        }
-
-        clearTimeout(this.notifyBuffering);
-        this.lastPlaybackWaiting = null;
-
-        events.trigger(syncPlayManager, 'playing');
+    onReady() {
+        this.playerIsBuffering = false;
+        this.sendBufferingRequest(false);
+        events.trigger(this.manager, 'ready');
     }
 
     /**
-     * Called when playback is buffering.
+     * Called by player wrapper when player is buffering.
      */
-    onWaiting(event) {
-        if (!this.lastPlaybackWaiting) {
-            this.lastPlaybackWaiting = new Date();
-        }
-
-        clearTimeout(this.notifyBuffering);
-        this.notifyBuffering = setTimeout(() => {
-            this.sendBufferingRequest();
-        }, this.minBufferingThresholdMillis);
-
-        events.trigger(syncPlayManager, 'waiting');
-    }
-
-    /**
-     * Binds to the player's events.
-     * @param {Object} player The player.
-     */
-    bindToPlayer(player) {
-        if (player !== this.currentPlayer) {
-            this.releaseCurrentPlayer();
-            this.currentPlayer = player;
-            if (!player) return;
-        }
-
-        // FIXME: the following are needed because the 'events' module
-        // is changing the scope when executing the callbacks.
-        // For instance, calling 'onPlayerUnpause' from the wrong scope breaks things because 'this'
-        // points to 'player' (the event emitter) instead of pointing to the SyncPlayManager singleton.
-        const self = this;
-        this._onPlayerUnpause = () => {
-            self.onPlayerUnpause();
-        };
-
-        this._onPlayerPause = () => {
-            self.onPlayerPause();
-        };
-
-        this._onTimeUpdate = (e) => {
-            self.onTimeUpdate(e);
-        };
-
-        this._onPlaying = () => {
-            self.onPlaying();
-        };
-
-        this._onWaiting = (e) => {
-            self.onWaiting(e);
-        };
-
-        events.on(player, 'unpause', this._onPlayerUnpause);
-        events.on(player, 'pause', this._onPlayerPause);
-        events.on(player, 'timeupdate', this.syncPlaybackTime); // register callback here to avoid latencies
-        events.on(player, 'timeupdate', this._onTimeUpdate);
-        events.on(player, 'playing', this._onPlaying);
-        events.on(player, 'waiting', this._onWaiting);
-
-        // Save player current PlaybackRate value
-        if (player.supports && player.supports('PlaybackRate')) {
-            this.localPlayerPlaybackRate = player.getPlaybackRate();
-            this.playbackRateSupported = true;
-        } else {
-            this.playbackRateSupported = false;
-        }
-
-        console.debug('SyncPlay bindToPlayer: playback rate supported:', this.playbackRateSupported);
-    }
-
-    /**
-     * Removes the bindings from the current player's events.
-     */
-    releaseCurrentPlayer() {
-        var player = this.currentPlayer;
-        if (player) {
-            events.off(player, 'unpause', this._onPlayerUnpause);
-            events.off(player, 'pause', this._onPlayerPause);
-            events.off(player, 'timeupdate', this._onTimeUpdate);
-            events.off(player, 'playing', this._onPlaying);
-            events.off(player, 'waiting', this._onWaiting);
-
-            // Restore player original PlaybackRate value
-            if (this.playbackRateSupported) {
-                player.setPlaybackRate(this.localPlayerPlaybackRate);
-                this.localPlayerPlaybackRate = 1.0;
-            }
-
-            this.currentPlayer = null;
-            this.playbackRateSupported = false;
-        }
+    onBuffering() {
+        this.playerIsBuffering = true;
+        this.sendBufferingRequest(true);
+        events.trigger(this.manager, 'buffering');
     }
 
     /**
@@ -240,17 +132,20 @@ class SyncPlayPlaybackCore {
      * @param {boolean} isBuffering Whether this client is buffering or not.
      */
     sendBufferingRequest(isBuffering = true) {
+        const playerWrapper = this.manager.getPlayerWrapper();
+        const currentPosition = playerWrapper.currentTime();
+        const currentPositionTicks = Math.round(currentPosition * syncPlayHelper.TicksPerMillisecond);
+        const isPlaying = playerWrapper.isPlaying();
+
         const currentTime = new Date();
         const now = this.timeSyncCore.localDateToRemote(currentTime);
-        const currentPositionTicks = playbackManager.currentTime() * syncPlayHelper.TicksPerMillisecond;
-        const state = playbackManager.getPlayerState();
-        const playlistItemId = syncPlayManager.queueCore.getCurrentPlaylistItemId();
+        const playlistItemId = this.manager.getQueueCore().getCurrentPlaylistItemId();
 
-        const apiClient = window.connectionManager.currentApiClient();
+        const apiClient = this.manager.getApiClient();
         apiClient.requestSyncPlayBuffering({
             When: now.toISOString(),
             PositionTicks: currentPositionTicks,
-            IsPlaying: !state.PlayState.IsPaused,
+            IsPlaying: isPlaying,
             PlaylistItemId: playlistItemId,
             BufferingDone: !isBuffering
         });
@@ -261,8 +156,7 @@ class SyncPlayPlaybackCore {
      * @returns {boolean} _true_ if player is buffering, _false_ otherwise.
      */
     isBuffering() {
-        if (this.lastPlaybackWaiting === null) return false;
-        return (new Date() - this.lastPlaybackWaiting) > this.minBufferingThresholdMillis;
+        return this.playerIsBuffering;
     }
 
     /**
@@ -270,38 +164,39 @@ class SyncPlayPlaybackCore {
      * @param {Object} command The playback command.
      */
     applyCommand(command) {
-        // Check if duplicate
+        // Check if duplicate.
         if (this.lastCommand &&
             this.lastCommand.When.getTime() === command.When.getTime() &&
             this.lastCommand.PositionTicks === command.PositionTicks &&
             this.lastCommand.Command === command.Command &&
             this.lastCommand.PlaylistItemId === command.PlaylistItemId
         ) {
-            // Duplicate command found, check playback state and correct if needed
+            // Duplicate command found, check playback state and correct if needed.
             console.debug('SyncPlay applyCommand: duplicate command received!', command);
 
-            // Determine if past command or future one
+            // Determine if past command or future one.
             const currentTime = new Date();
             const whenLocal = this.timeSyncCore.remoteDateToLocal(command.When);
             if (whenLocal > currentTime) {
-                // Command should be already scheduled, not much we can do
+                // Command should be already scheduled, not much we can do.
                 // TODO: should re-apply or just drop?
                 console.debug('SyncPlay applyCommand: command already scheduled.', command);
                 return;
             } else {
-                // Check if playback state matches requested command
-                const currentPositionTicks = playbackManager.currentTime() * syncPlayHelper.TicksPerMillisecond;
-                const state = playbackManager.getPlayerState();
-                const isPlaying = !state.PlayState.IsPaused;
+                // Check if playback state matches requested command.
+                const playerWrapper = this.manager.getPlayerWrapper();
+                const currentPositionTicks = Math.round(playerWrapper.currentTime() * syncPlayHelper.TicksPerMillisecond);
+                const isPlaying = playerWrapper.isPlaying();
 
                 switch (command.Command) {
                     case 'Unpause':
-                        // Check playback state only, as position ticks will be corrected by sync
+                        // Check playback state only, as position ticks will be corrected by sync.
                         if (!isPlaying) {
                             this.scheduleUnpause(command.When, command.PositionTicks);
                         }
                         break;
                     case 'Pause':
+                        // FIXME: check range instead of fixed value for ticks.
                         if (isPlaying || currentPositionTicks !== command.PositionTicks) {
                             this.schedulePause(command.When, command.PositionTicks);
                         }
@@ -312,11 +207,12 @@ class SyncPlayPlaybackCore {
                         }
                         break;
                     case 'Seek':
-                        // During seek, playback is paused
+                        // During seek, playback is paused.
+                        // FIXME: check range instead of fixed value for ticks.
                         if (isPlaying || currentPositionTicks !== command.PositionTicks) {
                             // Account for player imperfections, we got half a second of tollerance we can play with
-                            // (the server tollerates a range of values when client reports that is ready)
-                            const rangeWidth = 100; // in milliseconds
+                            // (the server tollerates a range of values when client reports that is ready).
+                            const rangeWidth = 100; // In milliseconds.
                             const randomOffsetTicks = Math.round((Math.random() - 0.5) * rangeWidth) * syncPlayHelper.TicksPerMillisecond;
                             this.scheduleSeek(command.When, command.PositionTicks + randomOffsetTicks);
                             console.debug('SyncPlay applyCommand: adding random offset to force seek:', randomOffsetTicks, command);
@@ -330,13 +226,18 @@ class SyncPlayPlaybackCore {
                         break;
                 }
 
-                // All done
+                // All done.
                 return;
             }
         }
 
-        // Applying command
+        // Applying command.
         this.lastCommand = command;
+
+        // Ignore if remote player has local SyncPlay manager.
+        if (this.manager.isRemote()) {
+            return;
+        }
 
         switch (command.Command) {
             case 'Unpause':
@@ -367,19 +268,21 @@ class SyncPlayPlaybackCore {
         const enableSyncTimeout = this.maxDelaySpeedToSync / 2.0;
         const currentTime = new Date();
         const playAtTimeLocal = this.timeSyncCore.remoteDateToLocal(playAtTime);
-        const currentPositionTicks = playbackManager.currentTime() * syncPlayHelper.TicksPerMillisecond;
+
+        const playerWrapper = this.manager.getPlayerWrapper();
+        const currentPositionTicks = playerWrapper.currentTime() * syncPlayHelper.TicksPerMillisecond;
 
         if (playAtTimeLocal > currentTime) {
             const playTimeout = playAtTimeLocal - currentTime;
 
-            // Seek only if delay is noticeable
+            // Seek only if delay is noticeable.
             if ((currentPositionTicks - positionTicks) > this.minDelaySkipToSync * syncPlayHelper.TicksPerMillisecond) {
                 this.localSeek(positionTicks);
             }
 
             this.scheduledCommandTimeout = setTimeout(() => {
                 this.localUnpause();
-                events.trigger(syncPlayManager, 'notify-osd', ['unpause']);
+                events.trigger(this.manager, 'notify-osd', ['unpause']);
 
                 this.syncTimeout = setTimeout(() => {
                     this.syncEnabled = true;
@@ -388,14 +291,14 @@ class SyncPlayPlaybackCore {
 
             console.debug('Scheduled unpause in', playTimeout / 1000.0, 'seconds.');
         } else {
-            // Group playback already started
+            // Group playback already started.
             const serverPositionTicks = this.estimateCurrentTicks(positionTicks, playAtTime);
-            syncPlayHelper.waitForEventOnce(syncPlayManager, 'unpause').then(() => {
+            syncPlayHelper.waitForEventOnce(this.manager, 'unpause').then(() => {
                 this.localSeek(serverPositionTicks);
             });
             this.localUnpause();
             setTimeout(() => {
-                events.trigger(syncPlayManager, 'notify-osd', ['unpause']);
+                events.trigger(this.manager, 'notify-osd', ['unpause']);
             }, 100);
 
             this.syncTimeout = setTimeout(() => {
@@ -417,10 +320,10 @@ class SyncPlayPlaybackCore {
         const pauseAtTimeLocal = this.timeSyncCore.remoteDateToLocal(pauseAtTime);
 
         const callback = () => {
-            syncPlayHelper.waitForEventOnce(syncPlayManager, 'pause', syncPlayHelper.WaitForPlayerEventTimeout).then(() => {
+            syncPlayHelper.waitForEventOnce(this.manager, 'pause', syncPlayHelper.WaitForPlayerEventTimeout).then(() => {
                 this.localSeek(positionTicks);
             }).catch(() => {
-                // Player was already paused, seeking
+                // Player was already paused, seeking.
                 this.localSeek(positionTicks);
             });
             this.localPause();
@@ -475,11 +378,11 @@ class SyncPlayPlaybackCore {
             this.localUnpause();
             this.localSeek(positionTicks);
 
-            syncPlayHelper.waitForEventOnce(syncPlayManager, 'playing', syncPlayHelper.WaitForEventDefaultTimeout).then(() => {
+            syncPlayHelper.waitForEventOnce(this.manager, 'ready', syncPlayHelper.WaitForEventDefaultTimeout).then(() => {
                 this.localPause();
                 this.sendBufferingRequest(false);
             }).catch((error) => {
-                console.error(`Timed out while waiting for 'playing' event! Seeking to ${positionTicks}.`, error);
+                console.error(`Timed out while waiting for 'ready' event! Seeking to ${positionTicks}.`, error);
                 this.localSeek(positionTicks);
             });
         };
@@ -503,269 +406,182 @@ class SyncPlayPlaybackCore {
         clearTimeout(this.syncTimeout);
 
         this.syncEnabled = false;
-        if (this.currentPlayer) {
-            this.currentPlayer.setPlaybackRate(1);
+        const playerWrapper = this.manager.getPlayerWrapper();
+        if (playerWrapper.hasPlaybackRate()) {
+            playerWrapper.setPlaybackRate(1.0);
         }
 
-        syncPlayManager.clearSyncIcon();
+        this.manager.clearSyncIcon();
     }
 
     /**
-     * Overrides some PlaybackManager's methods to intercept playback commands.
+     * Unpauses the local player.
      */
-    injectPlaybackManager() {
-        // Save local callbacks
-        playbackManager._localUnpause = playbackManager.unpause;
-        playbackManager._localPause = playbackManager.pause;
-        playbackManager._localSeek = playbackManager.seek;
-
-        // Override local callbacks
-        playbackManager.unpause = this.unpauseRequest;
-        playbackManager.pause = this.pauseRequest;
-        playbackManager.seek = this.seekRequest;
-    }
-
-    /**
-     * Restores original PlaybackManager's methods.
-     */
-    restorePlaybackManager() {
-        playbackManager.unpause = playbackManager._localUnpause;
-        playbackManager.pause = playbackManager._localPause;
-        playbackManager.seek = playbackManager._localSeek;
-    }
-
-    /**
-     * Overrides PlaybackManager's unpause method.
-     */
-    unpauseRequest(player) {
-        if (!syncPlayManager.hasPlaybackAccess()) {
-            toast({
-                text: globalize.translate('MessageSyncPlayMissingPlaybackAccess')
-            });
-            return;
-        }
-
-        const apiClient = window.connectionManager.currentApiClient();
-        apiClient.requestSyncPlayUnpause();
-    }
-
-    /**
-     * Overrides PlaybackManager's pause method.
-     */
-    pauseRequest(player) {
-        if (!syncPlayManager.hasPlaybackAccess()) {
-            toast({
-                text: globalize.translate('MessageSyncPlayMissingPlaybackAccess')
-            });
-            return;
-        }
-
-        const apiClient = window.connectionManager.currentApiClient();
-        apiClient.requestSyncPlayPause();
-        // Pause locally as well, to give the user some little control
-        playbackManager._localPause(player);
-    }
-
-    /**
-     * Overrides PlaybackManager's seek method.
-     */
-    seekRequest(PositionTicks, player) {
-        if (!syncPlayManager.hasPlaybackAccess()) {
-            toast({
-                text: globalize.translate('MessageSyncPlayMissingPlaybackAccess')
-            });
-            return;
-        }
-
-        const apiClient = window.connectionManager.currentApiClient();
-        apiClient.requestSyncPlaySeek({
-            PositionTicks: PositionTicks
-        });
-    }
-
-    /**
-     * Calls original PlaybackManager's unpause method.
-     */
-    localUnpause(player) {
-        // Ignore command when no player is active
-        if (!this.isPlaybackActive()) {
+    localUnpause() {
+        // Ignore command when no player is active.
+        if (!this.manager.isPlaybackActive()) {
             console.debug('SyncPlay localUnpause: no active player!');
             return;
         }
 
-        if (playbackManager.syncPlayEnabled) {
-            playbackManager._localUnpause(player);
-        } else {
-            playbackManager.unpause(player);
-        }
+        const playerWrapper = this.manager.getPlayerWrapper();
+        return playerWrapper.localUnpause();
     }
 
     /**
-     * Calls original PlaybackManager's pause method.
+     * Pauses the local player.
      */
-    localPause(player) {
-        // Ignore command when no player is active
-        if (!this.isPlaybackActive()) {
+    localPause() {
+        // Ignore command when no player is active.
+        if (!this.manager.isPlaybackActive()) {
             console.debug('SyncPlay localPause: no active player!');
             return;
         }
 
-        if (playbackManager.syncPlayEnabled) {
-            playbackManager._localPause(player);
-        } else {
-            playbackManager.pause(player);
-        }
+        const playerWrapper = this.manager.getPlayerWrapper();
+        return playerWrapper.localPause();
     }
 
     /**
-     * Calls original PlaybackManager's seek method.
+     * Seeks the local player.
      */
-    localSeek(PositionTicks, player) {
-        // Ignore command when no player is active
-        if (!this.isPlaybackActive()) {
+    localSeek(positionTicks) {
+        // Ignore command when no player is active.
+        if (!this.manager.isPlaybackActive()) {
             console.debug('SyncPlay localSeek: no active player!');
             return;
         }
 
-        if (playbackManager.syncPlayEnabled) {
-            playbackManager._localSeek(PositionTicks, player);
-        } else {
-            playbackManager.seek(PositionTicks, player);
-        }
+        const playerWrapper = this.manager.getPlayerWrapper();
+        return playerWrapper.localSeek(positionTicks);
     }
 
     /**
-     * Calls original PlaybackManager's stop method.
+     * Stops the local player.
      */
-    localStop(player) {
-        // Ignore command when no player is active
-        if (!this.isPlaybackActive()) {
+    localStop() {
+        // Ignore command when no player is active.
+        if (!this.manager.isPlaybackActive()) {
             console.debug('SyncPlay localStop: no active player!');
             return;
         }
 
-        playbackManager.stop(player);
+        const playerWrapper = this.manager.getPlayerWrapper();
+        return playerWrapper.localStop();
     }
 
     /**
      * Estimates current value for ticks given a past state.
      * @param {number} ticks The value of the ticks.
      * @param {Date} when The point in time for the value of the ticks.
+     * @param {Date} currentTime The current time, optional.
      */
-    estimateCurrentTicks(ticks, when) {
-        const currentTime = new Date();
+    estimateCurrentTicks(ticks, when, currentTime = new Date()) {
         const remoteTime = this.timeSyncCore.localDateToRemote(currentTime);
         return ticks + (remoteTime.getTime() - when.getTime()) * syncPlayHelper.TicksPerMillisecond;
     }
 
     /**
-     * Attempts to sync playback time with estimated server time.
+     * Attempts to sync playback time with estimated server time (or selected device for time sync).
      *
      * When sync is enabled, the following will be checked:
-     *  - check if local playback time is close enough to the server playback time
+     *  - check if local playback time is close enough to the server playback time.
      * If it is not, then a playback time sync will be attempted.
-     * Two methods of syncing are available:
+     * Two strategies of syncing are available:
      * - SpeedToSync: speeds up the media for some time to catch up (default is one second)
      * - SkipToSync: seeks the media to the estimated correct time
      * SpeedToSync aims to reduce the delay as much as possible, whereas SkipToSync is less pretentious.
+     * @param {Object} timeUpdateData The time update data that contains the current time as date and the current position in milliseconds.
      */
-    syncPlaybackTime() {
-        const self = syncPlayManager.playbackCore;
-
+    syncPlaybackTime(timeUpdateData) {
         // See comments in constants section for more info
-        const syncMethodThreshold = self.maxDelaySpeedToSync;
-        let speedToSyncTime = self.speedToSyncDuration;
+        const syncMethodThreshold = this.maxDelaySpeedToSync;
+        let speedToSyncTime = this.speedToSyncDuration;
 
         // Ignore sync when no player is active
-        if (!self.isPlaybackActive()) {
+        if (!this.manager.isPlaybackActive()) {
             console.debug('SyncPlay syncPlaybackTime: no active player!');
             return;
         }
 
         // Attempt to sync only when media is playing.
-        const { lastCommand } = self;
+        const { lastCommand } = this;
 
-        if (!lastCommand || lastCommand.Command !== 'Unpause' || self.isBuffering()) return;
+        if (!lastCommand || lastCommand.Command !== 'Unpause' || this.isBuffering()) return;
 
-        const currentTime = new Date();
+        const { currentTime, currentPosition } = timeUpdateData;
 
-        // Avoid overloading the browser
-        const elapsed = currentTime - self.lastSyncTime;
-        if (elapsed < syncMethodThreshold / 2) return;
-        self.lastSyncTime = currentTime;
+        // Get current PositionTicks.
+        const currentPositionTicks = currentPosition * syncPlayHelper.TicksPerMillisecond;
 
-        // Get current PositionTicks
-        const currentPositionTicks = playbackManager.currentTime() * syncPlayHelper.TicksPerMillisecond;
-        // Estimate PositionTicks on server
-        const serverPositionTicks = self.estimateCurrentTicks(lastCommand.PositionTicks, lastCommand.When);
-        // Measure delay that needs to be recovered
-        // diff might be caused by the player internally starting the playback
+        // Estimate PositionTicks on server.
+        const serverPositionTicks = this.estimateCurrentTicks(lastCommand.PositionTicks, lastCommand.When, currentTime);
+
+        // Measure delay that needs to be recovered.
+        // Diff might be caused by the player internally starting the playback.
         const diffMillis = (serverPositionTicks - currentPositionTicks) / syncPlayHelper.TicksPerMillisecond;
 
-        self.playbackDiffMillis = diffMillis;
+        this.playbackDiffMillis = diffMillis;
 
-        if (self.syncEnabled && self.enableSyncCorrection) {
+        // Avoid overloading the browser.
+        const elapsed = currentTime - this.lastSyncTime;
+        if (elapsed < syncMethodThreshold / 2) return;
+
+        this.lastSyncTime = currentTime;
+        const playerWrapper = this.manager.getPlayerWrapper();
+
+        if (this.syncEnabled && this.enableSyncCorrection) {
             const absDiffMillis = Math.abs(diffMillis);
-            // TODO: SpeedToSync sounds bad on songs
-            // TODO: SpeedToSync is failing on Safari (Mojave); even if playbackRate is supported, some delay seems to exist
-            // TODO: both SpeedToSync and SpeedToSync seem to have a hard time keeping up on Android Chrome as well
-            if (self.playbackRateSupported && self.useSpeedToSync && absDiffMillis >= self.minDelaySpeedToSync && absDiffMillis < self.maxDelaySpeedToSync) {
-                // Fix negative speed when client is ahead of time more than speedToSyncTime
-                const MinSpeed = 0.1;
+            // TODO: SpeedToSync sounds bad on songs.
+            // TODO: SpeedToSync is failing on Safari (Mojave); even if playbackRate is supported, some delay seems to exist.
+            // TODO: both SpeedToSync and SpeedToSync seem to have a hard time keeping up on Android Chrome as well.
+            if (playerWrapper.hasPlaybackRate() && this.useSpeedToSync && absDiffMillis >= this.minDelaySpeedToSync && absDiffMillis < this.maxDelaySpeedToSync) {
+                // Fix negative speed when client is ahead of time more than speedToSyncTime.
+                const MinSpeed = 0.2;
                 if (diffMillis <= -speedToSyncTime * MinSpeed) {
                     speedToSyncTime = Math.abs(diffMillis) / (1.0 - MinSpeed);
                 }
 
-                // SpeedToSync method
+                // SpeedToSync strategy.
                 const speed = 1 + diffMillis / speedToSyncTime;
 
                 if (speed <= 0) {
                     console.error('SyncPlay error: speed should not be negative!', speed, diffMillis, speedToSyncTime);
                 }
 
-                self.currentPlayer.setPlaybackRate(speed);
-                self.syncEnabled = false;
-                self.syncAttempts++;
-                syncPlayManager.showSyncIcon(`SpeedToSync (x${speed.toFixed(2)})`);
+                playerWrapper.setPlaybackRate(speed);
+                this.syncEnabled = false;
+                this.syncAttempts++;
+                this.manager.showSyncIcon(`SpeedToSync (x${speed.toFixed(2)})`);
 
-                self.syncTimeout = setTimeout(() => {
-                    if (self.isPlaybackActive()) {
-                        self.currentPlayer.setPlaybackRate(1);
-                    }
-                    self.syncEnabled = true;
-                    syncPlayManager.clearSyncIcon();
+                this.syncTimeout = setTimeout(() => {
+                    playerWrapper.setPlaybackRate(1.0);
+                    this.syncEnabled = true;
+                    this.manager.clearSyncIcon();
                 }, speedToSyncTime);
 
                 console.log('SyncPlay SpeedToSync', speed);
-            } else if (self.useSkipToSync && absDiffMillis >= self.minDelaySkipToSync) {
-                // SkipToSync method
-                self.localSeek(serverPositionTicks);
-                self.syncEnabled = false;
-                self.syncAttempts++;
-                syncPlayManager.showSyncIcon(`SkipToSync (${self.syncAttempts})`);
+            } else if (this.useSkipToSync && absDiffMillis >= this.minDelaySkipToSync) {
+                // SkipToSync strategy.
+                this.localSeek(serverPositionTicks);
+                this.syncEnabled = false;
+                this.syncAttempts++;
+                this.manager.showSyncIcon(`SkipToSync (${this.syncAttempts})`);
 
-                self.syncTimeout = setTimeout(() => {
-                    self.syncEnabled = true;
-                    syncPlayManager.clearSyncIcon();
+                this.syncTimeout = setTimeout(() => {
+                    this.syncEnabled = true;
+                    this.manager.clearSyncIcon();
                 }, syncMethodThreshold / 2);
 
                 console.log('SyncPlay SkipToSync', serverPositionTicks);
             } else {
-                // Playback is synced
-                if (self.syncAttempts > 0) {
-                    console.debug('Playback has been synced after', self.syncAttempts, 'attempts.');
+                // Playback is synced.
+                if (this.syncAttempts > 0) {
+                    console.debug('Playback has been synced after', this.syncAttempts, 'attempts.');
                 }
-                self.syncAttempts = 0;
+                this.syncAttempts = 0;
             }
         }
-    }
-
-    /**
-     * Gets playback status.
-     * @returns {boolean} Whether a player is active.
-     */
-    isPlaybackActive() {
-        return !!this.currentPlayer;
     }
 }
 

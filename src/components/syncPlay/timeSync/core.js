@@ -12,13 +12,24 @@ import TimeSyncPeer from 'timeSyncPeer';
  * Class that manages time syncing with several devices.
  */
 class TimeSyncCore {
-    constructor(webRTCCore) {
-        this.webRTCCore = webRTCCore;
-        this.timeSyncServer = new TimeSyncServer();
+    constructor() {
+        this.manager = null;
+        this.webRTCCore = null;
+        this.timeSyncServer = null;
         this.peers = {};
         this.peerIds = [];
-        this.activePeerId = 'server';
+        this.activePeerId = syncPlaySettings.get('timeSyncDevice');
         this.extraTimeOffset = syncPlaySettings.getFloat('extraTimeOffset', 0.0);
+    }
+
+    /**
+     * Initializes the core.
+     * @param {SyncPlayManager} syncPlayManager The SyncPlay manager.
+     */
+    init(syncPlayManager) {
+        this.manager = syncPlayManager;
+        this.webRTCCore = syncPlayManager.getWebRTCCore();
+        this.timeSyncServer = new TimeSyncServer(syncPlayManager);
 
         events.on(this.webRTCCore, 'peer-helo', (event, peerId) => {
             this.onPeerConnected(peerId);
@@ -38,7 +49,7 @@ class TimeSyncCore {
                 return;
             }
 
-            // Notify peers
+            // Notify peers.
             this.webRTCCore.broadcastMessage({
                 type: 'time-sync-server-update',
                 data: {
@@ -73,7 +84,7 @@ class TimeSyncCore {
     onPeerConnected(peerId) {
         let peer = this.peers[peerId];
         if (!peer) {
-            peer = new TimeSyncPeer(this.webRTCCore, peerId);
+            peer = new TimeSyncPeer(this.manager, peerId);
             this.peers[peerId] = peer;
             this.peerIds.push(peerId);
         }
@@ -119,6 +130,7 @@ class TimeSyncCore {
                 break;
             case 'ping-request':
                 peer.onPingRequest(message.data, receivedAt);
+                triggerRefresh = false;
                 break;
             case 'ping-response':
                 peer.onPingResponse(message.data, receivedAt);
@@ -149,7 +161,7 @@ class TimeSyncCore {
                 ping: peer.getPing(),
                 peerTimeOffset: peer.getPeerTimeOffset(),
                 peerPing: peer.getPeerPing()
-            }
+            };
         });
 
         devices.unshift({
@@ -159,7 +171,7 @@ class TimeSyncCore {
             ping: this.timeSyncServer.getPing(),
             peerTimeOffset: 0,
             peerPing: 0
-        })
+        });
 
         return devices;
     }
@@ -180,8 +192,8 @@ class TimeSyncCore {
     }
 
     /**
-     * Gets the active device selected for time sync. Default value is 'server'.
-     * @returns {string} The id of the device.
+     * Gets the identifier of the selected device for time sync. Default value is 'server'.
+     * @returns {string} The identifier.
      */
     getActiveDevice() {
         return this.activePeerId;
@@ -202,17 +214,16 @@ class TimeSyncCore {
      * @returns {Date} Local time.
      */
     remoteDateToLocal(remote) {
-        let date;
+        let date = null;
         if (this.activePeerId !== 'server') {
             const peer = this.getPeerById(this.activePeerId);
-            if (!peer) {
-                this.activePeerId = 'server';
-                date = this.remoteDateToLocal(remote);
-            } else {
+            if (peer) {
                 const peerDate = peer.serverDateToPeer(remote);
                 date = peer.remoteDateToLocal(peerDate);
             }
-        } else {
+        }
+
+        if (!date) {
             date = this.timeSyncServer.remoteDateToLocal(remote);
         }
 
@@ -225,17 +236,16 @@ class TimeSyncCore {
      * @returns {Date} Server time.
      */
     localDateToRemote(local) {
-        let date;
+        let date = null;
         if (this.activePeerId !== 'server') {
             const peer = this.getPeerById(this.activePeerId);
-            if (!peer) {
-                this.activePeerId = 'server';
-                date = this.localDateToRemote(local);
-            } else {
+            if (peer) {
                 const peerDate = peer.localDateToRemote(local);
                 date = peer.peerDateToServer(peerDate);
             }
-        } else {
+        }
+
+        if (!date) {
             date = this.timeSyncServer.localDateToRemote(local);
         }
 
