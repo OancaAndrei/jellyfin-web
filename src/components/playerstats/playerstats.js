@@ -344,8 +344,14 @@ import 'css!./playerstats';
         const stats = syncPlayManager.getStats();
 
         syncStats.push({
-            label: globalize.translate('LabelSyncPlayTimeOffset'),
-            value: stats.TimeOffset + ' ' + globalize.translate('MillisecondsUnit')
+            label: globalize.translate('LabelSyncPlayTimeSyncDevice'),
+            value: stats.TimeSyncDevice
+        });
+
+        syncStats.push({
+            // TODO: clean old string 'LabelSyncPlayTimeOffset' from translations.
+            label: globalize.translate('LabelSyncPlayTimeSyncOffset'),
+            value: stats.TimeSyncOffset + ' ' + globalize.translate('MillisecondsUnit')
         });
 
         syncStats.push({

@@ -3,6 +3,7 @@
  * @module components/syncPlay/timeSync/peer
  */
 
+import syncPlaySettings from 'syncPlaySettings';
 import TimeSync from 'timeSync';
 
 /**
@@ -13,8 +14,9 @@ class TimeSyncPeer extends TimeSync {
         super(syncPlayManager);
         this.webRTCCore = syncPlayManager.getWebRTCCore();
         this.peerId = peerId;
-        this.peerTimeOffset = 0; // peer's time offset with server
-        this.peerPing = 0; // peer's ping with server
+        this.displayName = '';
+        this.peerTimeOffset = 0; // Peer's time offset with server.
+        this.peerPing = 0; // Peer's ping with server.
     }
 
     /**
@@ -41,6 +43,14 @@ class TimeSyncPeer extends TimeSync {
      */
     getPeerId() {
         return this.peerId;
+    }
+
+    /**
+     * Gets the display name for this peer.
+     * @returns {string} The display name.
+     */
+    getDisplayName() {
+        return (this.displayName && this.displayName !== '') ? this.displayName : this.peerId.substring(0, 7);
     }
 
     /**
@@ -79,6 +89,15 @@ class TimeSyncPeer extends TimeSync {
         }
 
         this.startPing();
+
+        // Send display name of this device.
+        const message = {
+            type: 'display-name',
+            data: {
+                displayName: syncPlaySettings.get('webRTCDisplayName') || ''
+            }
+        };
+        this.webRTCCore.sendMessage(this.peerId, message);
     }
 
     /**
@@ -90,6 +109,19 @@ class TimeSyncPeer extends TimeSync {
         if (typeof this.rejectPingRequest === 'function') {
             this.rejectPingRequest('Peer disconnected.');
             this.resetCallbacks();
+        }
+    }
+
+    /**
+     * Handles display-name message from peer.
+     * @param {Object} data The update data.
+     */
+    onDisplayName(data) {
+        const { displayName } = data || {};
+        if (!data || displayName === null) {
+            console.error(`SyncPlay TimeSyncPeer onDisplayName: invalid display-name from ${this.peerId}.`, data);
+        } else {
+            this.displayName = displayName;
         }
     }
 

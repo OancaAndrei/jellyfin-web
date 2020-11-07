@@ -195,6 +195,7 @@ class SyncPlaySettingsEditor {
         chkOpenPlaybackAccess.checked = playbackAccess;
         chkOpenPlaylistAccess.checked = playlistAccess;
         context.querySelector('#chkWebRTC').checked = syncPlaySettings.getBool('enableWebRTC', true);
+        context.querySelector('#txtWebRTCDisplayName').value = syncPlaySettings.get('webRTCDisplayName');
         context.querySelector('#txtP2PTracker').value = syncPlaySettings.get('p2pTracker');
         context.querySelector('#txtExtraTimeOffset').value = syncPlaySettings.getFloat('extraTimeOffset', 0.0);
         context.querySelector('#chkSyncCorrection').checked = syncPlaySettings.getBool('enableSyncCorrection', true);
@@ -223,6 +224,11 @@ class SyncPlaySettingsEditor {
         this.refreshTimeSyncDevices();
         const timeSyncSelect = context.querySelector('#selectTimeSync');
         timeSyncSelect.value = this.timeSyncCore.getActiveDevice();
+        this.timeSyncSelectedValue = timeSyncSelect.value;
+
+        timeSyncSelect.addEventListener('change', () => {
+            this.timeSyncSelectedValue = timeSyncSelect.value;
+        });
 
         await this.refreshAccessList();
     }
@@ -268,8 +274,10 @@ class SyncPlaySettingsEditor {
         const devices = this.timeSyncCore.getDevices();
 
         timeSyncSelect.innerHTML = devices.map(device => {
-            return `<option value="${device.id}">${device.id} (time offset: ${device.timeOffset} ms; ping: ${device.ping} ms)</option>`;
+            return `<option value="${device.id}">${device.name} (time offset: ${device.timeOffset} ms; ping: ${device.ping} ms)</option>`;
         }).join('');
+
+        timeSyncSelect.value = this.timeSyncSelectedValue;
     }
 
     /**
@@ -465,6 +473,7 @@ class SyncPlaySettingsEditor {
         const openPlaybackAccess = context.querySelector('#chkOpenPlaybackAccess').checked;
         const openPlaylistAccess = context.querySelector('#chkOpenPlaylistAccess').checked;
         const enableWebRTC = context.querySelector('#chkWebRTC').checked;
+        const webRTCDisplayName = context.querySelector('#txtWebRTCDisplayName').value;
         const p2pTracker = context.querySelector('#txtP2PTracker').value;
         const timeSyncDevice = context.querySelector('#selectTimeSync').value;
         const extraTimeOffset = context.querySelector('#txtExtraTimeOffset').value;
@@ -477,6 +486,7 @@ class SyncPlaySettingsEditor {
         const useSkipToSync = context.querySelector('#chkSkipToSync').checked;
 
         syncPlaySettings.set('enableWebRTC', enableWebRTC);
+        syncPlaySettings.set('webRTCDisplayName', webRTCDisplayName);
         syncPlaySettings.set('p2pTracker', p2pTracker);
         syncPlaySettings.set('timeSyncDevice', timeSyncDevice);
         syncPlaySettings.set('extraTimeOffset', extraTimeOffset);

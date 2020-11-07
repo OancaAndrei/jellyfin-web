@@ -199,10 +199,13 @@ function initClient() {
             promises.push(require(['fetch']));
         }
 
-        require(['events', 'playbackManager', 'syncPlayManager', 'syncPlayPlayerFactory', 'syncPlayToasts',
+        require(['apphost', 'events', 'playbackManager', 'syncPlaySettings', 'syncPlayManager', 'syncPlayPlayerFactory', 'syncPlayToasts',
             'syncPlayNoActivePlayer', 'syncPlayHtmlVideoPlayer', 'syncPlayHtmlAudioPlayer'],
-        function (events, playbackManager, syncPlayManager, playerFactory, syncPlayToasts,
+        function (appHost, events, playbackManager, syncPlaySettings, syncPlayManager, playerFactory, syncPlayToasts,
             syncPlayNoActivePlayer, syncPlayHtmlVideoPlayer, syncPlayHtmlAudioPlayer) {
+            appHost = appHost.default || appHost;
+            syncPlaySettings = syncPlaySettings.default || syncPlaySettings;
+
             // Import once to register singleton.
             syncPlayToasts = syncPlayToasts.default || syncPlayToasts;
 
@@ -218,6 +221,13 @@ function initClient() {
 
             // Init with default player wrapper.
             syncPlayManager.bindToPlayer(playbackManager.default.getCurrentPlayer());
+
+            // Init some settings.
+            const webRTCDisplayName = syncPlaySettings.get('webRTCDisplayName');
+            if (!webRTCDisplayName) {
+                const deviceName = appHost.deviceName();
+                syncPlaySettings.set('webRTCDisplayName', deviceName);
+            }
         });
 
         Promise.all(promises).then(function () {

@@ -68,6 +68,17 @@ class TimeSyncCore {
         events.on(syncPlaySettings, 'extraTimeOffset', (event, value, oldValue) => {
             this.extraTimeOffset = syncPlaySettings.getFloat('extraTimeOffset', 0.0);
         });
+
+        events.on(syncPlaySettings, 'webRTCDisplayName', (event, value, oldValue) => {
+            // Broadcast display name of this device.
+            const message = {
+                type: 'display-name',
+                data: {
+                    displayName: value || ''
+                }
+            };
+            this.webRTCCore.broadcastMessage(message);
+        });
     }
 
     /**
@@ -125,6 +136,9 @@ class TimeSyncCore {
         let triggerRefresh = true;
 
         switch (message.type) {
+            case 'display-name':
+                peer.onDisplayName(message.data);
+                break;
             case 'time-sync-server-update':
                 peer.onTimeSyncServerUpdate(message.data);
                 break;
@@ -157,6 +171,7 @@ class TimeSyncCore {
             return {
                 type: 'peer',
                 id: peer.getPeerId(),
+                name: peer.getDisplayName(),
                 timeOffset: peer.getTimeOffset(),
                 ping: peer.getPing(),
                 peerTimeOffset: peer.getPeerTimeOffset(),
@@ -167,6 +182,7 @@ class TimeSyncCore {
         devices.unshift({
             type: 'server',
             id: 'server',
+            name: 'Server',
             timeOffset: this.timeSyncServer.getTimeOffset(),
             ping: this.timeSyncServer.getPing(),
             peerTimeOffset: 0,
@@ -197,6 +213,20 @@ class TimeSyncCore {
      */
     getActiveDevice() {
         return this.activePeerId;
+    }
+
+    /**
+     * Gets the display name of the selected device for time sync.
+     * @returns {string} The display name.
+     */
+    getActiveDeviceName() {
+        let name = 'Server';
+        const peer = this.getPeerById(this.activePeerId);
+        if (peer) {
+            name = peer.getDisplayName();
+        }
+
+        return name;
     }
 
     /**
