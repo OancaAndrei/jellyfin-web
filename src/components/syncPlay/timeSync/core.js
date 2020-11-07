@@ -18,6 +18,8 @@ class TimeSyncCore {
         this.timeSyncServer = null;
         this.peers = {};
         this.peerIds = [];
+        this.listeningPeers = [];
+
         this.activePeerId = syncPlaySettings.get('timeSyncDevice');
         this.extraTimeOffset = syncPlaySettings.getFloat('extraTimeOffset', 0.0);
     }
@@ -41,6 +43,18 @@ class TimeSyncCore {
 
         events.on(this.webRTCCore, 'peer-message', (event, peerId, message, receivedAt) => {
             this.onPeerMessage(peerId, message, receivedAt);
+        });
+
+        events.on(this.manager, 'playback-diff', (event, playbackDiff) => {
+            this.onPlaybackDiff(playbackDiff);
+        });
+
+        events.on(this.manager, 'unpause', (event) => {
+            this.onPlaybackDiff(0, true);
+        });
+
+        events.on(this.manager, 'pause', (event) => {
+            this.onPlaybackDiff(0, true);
         });
 
         events.on(this.timeSyncServer, 'update', (event, error, timeOffset, ping) => {
@@ -102,6 +116,11 @@ class TimeSyncCore {
 
         peer.onConnected();
         events.trigger(this, 'refresh-devices');
+
+        // Register for playback diff updates.
+        if (peerId === this.activePeerId) {
+            peer.requestUpdates(true);
+        }
     }
 
     /**
@@ -115,6 +134,11 @@ class TimeSyncCore {
             this.peers[peerId] = null;
             const index = this.peerIds.indexOf(peerId);
             this.peerIds.splice(index, 1);
+
+            // Unregister peer from playback diff updates.
+            this.onPeerUpdatesRequest(peerId, {
+                enable: false
+            });
 
             events.trigger(this, 'refresh-devices');
         }
@@ -149,6 +173,14 @@ class TimeSyncCore {
             case 'ping-response':
                 peer.onPingResponse(message.data, receivedAt);
                 break;
+            case 'playback-diff':
+                peer.onPlaybackDiff(message.data);
+                triggerRefresh = false;
+                break;
+            case 'playback-updates-request':
+                this.onPeerUpdatesRequest(peerId, message.data);
+                triggerRefresh = false;
+                break;
             default:
                 console.debug(`SyncPlay TimeSyncCore onPeerMessage: ignoring message from ${peerId}.`, message);
                 triggerRefresh = false;
@@ -158,6 +190,42 @@ class TimeSyncCore {
         if (triggerRefresh) {
             events.trigger(this, 'refresh-devices');
         }
+    }
+
+    /**
+     * Handles a peer requesting to subscribe to playback updates.
+     * @param {string} peerId The id of the peer.
+     * @param {Object} data The request data.
+     */
+    onPeerUpdatesRequest(peerId, data) {
+        const { enable } = data;
+        const index = this.listeningPeers.indexOf(peerId);
+        if (enable && index === -1) {
+            this.listeningPeers.push(peerId);
+        } else if (!enable && index !== -1) {
+            this.listeningPeers.splice(index, 1);
+        }
+
+        console.debug(`SyncPlay PlaybackSyncCore onPeerUpdatesRequest: peer ${peerId} is ${enable ? '' : 'not '}listening.`, this.listeningPeers);
+    }
+
+    /**
+     * Notifies peers of playback diff update.
+     * @param {number} playbackDiff The new playback diff.
+     * @param {boolean} reset Whether the peers should drop old diffs.
+     */
+    onPlaybackDiff(playbackDiff, reset = false) {
+        const message = {
+            type: 'playback-diff',
+            data: {
+                playbackDiff: playbackDiff,
+                reset: reset
+            }
+        };
+
+        this.listeningPeers.forEach(peerId => {
+            this.webRTCCore.sendMessage(peerId, message);
+        });
     }
 
     /**
@@ -197,11 +265,21 @@ class TimeSyncCore {
      * @param {string} deviceId The id of the device.
      */
     setActiveDevice(deviceId) {
+        const oldActivePeer = this.getPeerById(this.activePeerId);
         const isPeer = this.peerIds.indexOf(deviceId) !== -1;
         if (isPeer) {
             this.activePeerId = deviceId;
         } else {
             this.activePeerId = 'server';
+        }
+
+        if (oldActivePeer) {
+            oldActivePeer.requestUpdates(false);
+        }
+
+        const newActivePeer = this.getPeerById(this.activePeerId);
+        if (newActivePeer) {
+            newActivePeer.requestUpdates(true);
         }
 
         console.debug(`SyncPlay TimeSyncCore setActiveDevice: ${this.activePeerId} with ${this.getTimeOffset()} ms of total time offset.`);
@@ -292,6 +370,19 @@ class TimeSyncCore {
             return peer.getTimeOffset() + peer.getPeerTimeOffset() + this.extraTimeOffset;
         } else {
             return this.timeSyncServer.getTimeOffset() + this.extraTimeOffset;
+        }
+    }
+
+    /**
+     * Gets the playback diff that should be used to offset local playback, in milliseconds.
+     * @returns {number} The time offset.
+     */
+    getPlaybackDiff() {
+        const peer = this.getPeerById(this.activePeerId);
+        if (peer) {
+            return peer.getPeerPlaybackDiff();
+        } else {
+            return 0;
         }
     }
 

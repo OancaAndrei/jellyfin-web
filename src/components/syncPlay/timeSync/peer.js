@@ -7,6 +7,12 @@ import syncPlaySettings from 'syncPlaySettings';
 import TimeSync from 'timeSync';
 
 /**
+ * Playback diff estimation.
+ */
+const NumberOfTrackedDiffs = 40;
+const DiffsSubarrayLength = 25;
+
+/**
  * Class that manages time syncing with a peer.
  */
 class TimeSyncPeer extends TimeSync {
@@ -17,6 +23,8 @@ class TimeSyncPeer extends TimeSync {
         this.displayName = '';
         this.peerTimeOffset = 0; // Peer's time offset with server.
         this.peerPing = 0; // Peer's ping with server.
+        this.peerPlaybackDiff = 0; // Peer's playback diff average.
+        this.diffs = []; // List of peer's playback diffs over time.
     }
 
     /**
@@ -35,6 +43,19 @@ class TimeSyncPeer extends TimeSync {
             };
             this.webRTCCore.sendMessage(this.peerId, message);
         });
+    }
+
+    /**
+     * Toggle playback updates from peer.
+     */
+    requestUpdates(enable) {
+        const message = {
+            type: 'playback-updates-request',
+            data: {
+                enable: enable
+            }
+        };
+        this.webRTCCore.sendMessage(this.peerId, message);
     }
 
     /**
@@ -67,6 +88,14 @@ class TimeSyncPeer extends TimeSync {
      */
     getPeerPing() {
         return this.peerPing;
+    }
+
+    /**
+     * Gets the playback diff of the peer, in milliseconds.
+     * @returns {number} The playback diff.
+     */
+    getPeerPlaybackDiff() {
+        return this.peerPlaybackDiff;
     }
 
     /**
@@ -181,6 +210,46 @@ class TimeSyncPeer extends TimeSync {
         } else {
             this.peerTimeOffset = timeOffset;
             this.peerPing = ping;
+        }
+    }
+
+    /**
+     * Handles playback-diff message from peer.
+     * @param {Object} data The update data.
+     */
+    onPlaybackDiff(data) {
+        const { playbackDiff, reset = false } = data || {};
+        if (!data || playbackDiff === null) {
+            console.error(`SyncPlay PlaybackSyncPeer onPlaybackDiff: invalid playback-diff from ${this.peerId}.`, data);
+        } else {
+            if (reset) {
+                this.diffs = [];
+                this.peerPlaybackDiff = 0;
+            }
+
+            this.diffs.push(playbackDiff);
+            if (this.diffs.length > NumberOfTrackedDiffs) {
+                this.diffs.shift();
+            }
+
+            // Compute average playback diff.
+            const sortedMeasurements = this.diffs.slice(0);
+            sortedMeasurements.sort((a, b) => a - b);
+
+            let diffs = [];
+            if (sortedMeasurements.length < DiffsSubarrayLength) {
+                diffs = sortedMeasurements;
+            } else {
+                const range = Math.floor(DiffsSubarrayLength / 2);
+                const center = Math.floor(sortedMeasurements.length / 2);
+                const startIndex = center - range;
+                const endIndex = center + range;
+                diffs = sortedMeasurements.slice(startIndex, endIndex);
+            }
+
+            this.peerPlaybackDiff = diffs.reduce((a, b) => a + b, 0) / diffs.length;
+
+            console.debug(`SyncPlay PlaybackSyncPeer onPlaybackDiff: ${this.peerId} average ${this.peerPlaybackDiff} ms.`, this.diffs);
         }
     }
 

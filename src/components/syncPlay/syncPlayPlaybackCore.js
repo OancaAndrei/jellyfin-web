@@ -485,8 +485,9 @@ class SyncPlayPlaybackCore {
      * Attempts to sync playback time with estimated server time (or selected device for time sync).
      *
      * When sync is enabled, the following will be checked:
-     *  - check if local playback time is close enough to the server playback time.
-     * If it is not, then a playback time sync will be attempted.
+     *  - check if local playback time is close enough to the server playback time;
+     *  - playback diff (distance from estimated server playback time) is aligned with selected device for time sync.
+     * If playback diff exceeds some set thresholds, then a playback time sync will be attempted.
      * Two strategies of syncing are available:
      * - SpeedToSync: speeds up the media for some time to catch up (default is one second)
      * - SkipToSync: seeks the media to the estimated correct time
@@ -521,7 +522,12 @@ class SyncPlayPlaybackCore {
         // Diff might be caused by the player internally starting the playback.
         const diffMillis = (serverPositionTicks - currentPositionTicks) / syncPlayHelper.TicksPerMillisecond;
 
+        // Adapt playback diff to selected device for time syncing.
+        const targetPlaybackDiff = diffMillis - this.timeSyncCore.getPlaybackDiff();
+
+        // Notify update for playback sync.
         this.playbackDiffMillis = diffMillis;
+        events.trigger(this.manager, 'playback-diff', [this.playbackDiffMillis]);
 
         // Avoid overloading the browser.
         const elapsed = currentTime - this.lastSyncTime;
@@ -531,22 +537,22 @@ class SyncPlayPlaybackCore {
         const playerWrapper = this.manager.getPlayerWrapper();
 
         if (this.syncEnabled && this.enableSyncCorrection) {
-            const absDiffMillis = Math.abs(diffMillis);
+            const absDiffMillis = Math.abs(targetPlaybackDiff);
             // TODO: SpeedToSync sounds bad on songs.
             // TODO: SpeedToSync is failing on Safari (Mojave); even if playbackRate is supported, some delay seems to exist.
             // TODO: both SpeedToSync and SpeedToSync seem to have a hard time keeping up on Android Chrome as well.
             if (playerWrapper.hasPlaybackRate() && this.useSpeedToSync && absDiffMillis >= this.minDelaySpeedToSync && absDiffMillis < this.maxDelaySpeedToSync) {
                 // Fix negative speed when client is ahead of time more than speedToSyncTime.
                 const MinSpeed = 0.2;
-                if (diffMillis <= -speedToSyncTime * MinSpeed) {
-                    speedToSyncTime = Math.abs(diffMillis) / (1.0 - MinSpeed);
+                if (targetPlaybackDiff <= -speedToSyncTime * MinSpeed) {
+                    speedToSyncTime = Math.abs(targetPlaybackDiff) / (1.0 - MinSpeed);
                 }
 
                 // SpeedToSync strategy.
-                const speed = 1 + diffMillis / speedToSyncTime;
+                const speed = 1 + targetPlaybackDiff / speedToSyncTime;
 
                 if (speed <= 0) {
-                    console.error('SyncPlay error: speed should not be negative!', speed, diffMillis, speedToSyncTime);
+                    console.error('SyncPlay error: speed should not be negative!', speed, targetPlaybackDiff, speedToSyncTime);
                 }
 
                 playerWrapper.setPlaybackRate(speed);
