@@ -437,7 +437,7 @@ class SyncPlayManager {
 
         this.timeSyncCore.forceUpdate();
 
-        const enableWebRTC = syncPlaySettings.getBool('enableWebRTC');
+        const enableWebRTC = syncPlaySettings.getBool('enableWebRTC', true);
         if (enableWebRTC) {
             this.webRTCCore.enable();
         }

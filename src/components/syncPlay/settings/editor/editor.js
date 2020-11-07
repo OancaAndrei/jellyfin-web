@@ -194,16 +194,16 @@ class SyncPlaySettingsEditor {
         selectGroupVisibility.value = visibility;
         chkOpenPlaybackAccess.checked = playbackAccess;
         chkOpenPlaylistAccess.checked = playlistAccess;
-        context.querySelector('#chkWebRTC').checked = syncPlaySettings.getBool('enableWebRTC');
+        context.querySelector('#chkWebRTC').checked = syncPlaySettings.getBool('enableWebRTC', true);
         context.querySelector('#txtP2PTracker').value = syncPlaySettings.get('p2pTracker');
         context.querySelector('#txtExtraTimeOffset').value = syncPlaySettings.getFloat('extraTimeOffset', 0.0);
-        context.querySelector('#chkSyncCorrection').checked = syncPlaySettings.getBool('enableSyncCorrection');
+        context.querySelector('#chkSyncCorrection').checked = syncPlaySettings.getBool('enableSyncCorrection', true);
         context.querySelector('#txtMinDelaySpeedToSync').value = syncPlaySettings.getFloat('minDelaySpeedToSync', 60.0);
         context.querySelector('#txtMaxDelaySpeedToSync').value = syncPlaySettings.getFloat('maxDelaySpeedToSync', 3000.0);
         context.querySelector('#txtSpeedToSyncDuration').value = syncPlaySettings.getFloat('speedToSyncDuration', 1000.0);
         context.querySelector('#txtMinDelaySkipToSync').value = syncPlaySettings.getFloat('minDelaySkipToSync', 400.0);
-        context.querySelector('#chkSpeedToSync').checked = syncPlaySettings.getBool('useSpeedToSync');
-        context.querySelector('#chkSkipToSync').checked = syncPlaySettings.getBool('useSkipToSync');
+        context.querySelector('#chkSpeedToSync').checked = syncPlaySettings.getBool('useSpeedToSync', true);
+        context.querySelector('#chkSkipToSync').checked = syncPlaySettings.getBool('useSkipToSync', true);
 
         if (!this.canEditGroup) {
             txtGroupName.disabled = true;

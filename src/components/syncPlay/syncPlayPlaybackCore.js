@@ -60,13 +60,13 @@ class SyncPlayPlaybackCore {
         this.minDelaySkipToSync = syncPlaySettings.getFloat('minDelaySkipToSync', 400.0);
 
         // Whether SpeedToSync should be used.
-        this.useSpeedToSync = syncPlaySettings.getBool('useSpeedToSync');
+        this.useSpeedToSync = syncPlaySettings.getBool('useSpeedToSync', true);
 
         // Whether SkipToSync should be used.
-        this.useSkipToSync = syncPlaySettings.getBool('useSkipToSync');
+        this.useSkipToSync = syncPlaySettings.getBool('useSkipToSync', true);
 
         // Whether sync correction during playback is active.
-        this.enableSyncCorrection = syncPlaySettings.getBool('enableSyncCorrection');
+        this.enableSyncCorrection = syncPlaySettings.getBool('enableSyncCorrection', true);
     }
 
     /**

@@ -52,15 +52,22 @@ class SyncPlaySettings {
     /**
      * Gets the value of a setting as boolean.
      * @param {string} name The name of the setting.
+     * @param {boolean} defaultValue The default value if the setting does not exist.
      * @returns {boolean} The value.
      */
-    getBool(name) {
-        return this.get(name) !== 'false';
+    getBool(name, defaultValue = false) {
+        const value = this.get(name);
+        if (value !== 'true' && value !== 'false') {
+            return defaultValue;
+        } else {
+            return this.get(name) !== 'false';
+        }
     }
 
     /**
      * Gets the value of a setting as float number.
      * @param {string} name The name of the setting.
+     * @param {number} defaultValue The default value if the setting does not exist.
      * @returns {number} The value.
      */
     getFloat(name, defaultValue = 0) {
