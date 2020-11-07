@@ -2924,6 +2924,8 @@ class PlaybackManager {
                 }
             }
 
+            events.trigger(self, 'playbackerror', [errorType]);
+
             const displayErrorCode = 'NoCompatibleStream';
             onPlaybackStopped.call(player, e, displayErrorCode);
         }

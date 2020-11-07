@@ -134,7 +134,7 @@ function showMultiCancellationPrompt(serverId, programId, timerId, timerStatus, 
                 type: 'cancel'
             });
 
-            dialog({
+            dialog.show({
 
                 text: globalize.translate('MessageConfirmRecordingCancellation'),
                 buttons: items
@@ -191,4 +191,3 @@ export default {
     cancelTimerWithConfirmation: cancelTimerWithConfirmation,
     cancelSeriesTimerWithConfirmation: cancelSeriesTimerWithConfirmation
 };
-
