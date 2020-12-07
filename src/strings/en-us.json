@@ -1031,6 +1031,8 @@
     "MessageSyncPlayPlaybackPermissionRequired": "Playback permission required.",
     "MessageSyncPlayUserJoined": "<b>{0}</b> has joined the group.",
     "MessageSyncPlayUserLeft": "<b>{0}</b> has left the group.",
+    "MessageSyncPlayRemoteSessionJoinFailed": "SyncPlay cast failed.",
+    "MessageSyncPlayRemoteSessionLeaveFailed": "Cannot disable SyncPlay on remote player.",
     "MessageTheFollowingLocationWillBeRemovedFromLibrary": "The following media locations will be removed from your library:",
     "MessageUnableToConnectToServer": "We're unable to connect to the selected server right now. Please ensure it is running and try again.",
     "MessageUnsetContentHelp": "Content will be displayed as plain folders. For best results use the metadata manager to set the content types of sub-folders.",
