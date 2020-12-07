@@ -38,6 +38,7 @@ import SyncPlayToasts from '../components/syncPlay/ui/syncPlayToasts';
 import SyncPlayNoActivePlayer from '../components/syncPlay/ui/players/NoActivePlayer';
 import SyncPlayHtmlVideoPlayer from '../components/syncPlay/ui/players/HtmlVideoPlayer';
 import SyncPlayHtmlAudioPlayer from '../components/syncPlay/ui/players/HtmlAudioPlayer';
+import SyncPlayRemotePlayer from '../components/syncPlay/ui/players/RemotePlayer';
 
 // TODO: Move this elsewhere
 window.getWindowLocationSearch = function(win) {
@@ -161,6 +162,7 @@ function initSyncPlay() {
     SyncPlay.PlayerFactory.setDefaultWrapper(SyncPlayNoActivePlayer);
     SyncPlay.PlayerFactory.registerWrapper(SyncPlayHtmlVideoPlayer);
     SyncPlay.PlayerFactory.registerWrapper(SyncPlayHtmlAudioPlayer);
+    SyncPlay.PlayerFactory.registerWrapper(SyncPlayRemotePlayer);
 
     // Listen for player changes.
     Events.on(playbackManager, 'playerchange', (event, newPlayer, newTarget, oldPlayer) => {
