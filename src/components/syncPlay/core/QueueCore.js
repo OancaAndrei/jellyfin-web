@@ -185,7 +185,11 @@ class QueueCore {
         }).catch((error) => {
             console.error('Error while waiting for `playbackstart` event!', origin, error);
             if (!this.manager.isSyncPlayEnabled()) {
-                Helper.showMessage(this.manager, 'MessageSyncPlayErrorMedia');
+                if (error.message === 'MediaControlNotAllowed') {
+                    Helper.showMessage(this.manager, 'MessageSyncPlayPlaybackPermissionRequired');
+                } else {
+                    Helper.showMessage(this.manager, 'MessageSyncPlayErrorMedia');
+                }
             }
 
             this.manager.haltGroupPlayback(apiClient);
@@ -234,7 +238,14 @@ class QueueCore {
             this.scheduleReadyRequestOnPlaybackStart(apiClient, 'startPlayback');
         }).catch((error) => {
             console.error(error);
-            Helper.showMessage(this.manager, 'MessageSyncPlayErrorMedia');
+            if (error.message === 'MediaControlNotAllowed') {
+                Helper.showMessage(this.manager, 'MessageSyncPlayPlaybackPermissionRequired');
+            } else {
+                Helper.showMessage(this.manager, 'MessageSyncPlayErrorMedia');
+            }
+
+            // Allow others to use the group in the meanwhile.
+            this.manager.haltGroupPlayback(apiClient);
         });
     }
 
